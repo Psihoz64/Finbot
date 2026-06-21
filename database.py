@@ -42,8 +42,104 @@ def init_db():
             )
         ''')
         
+        # Новая таблица для категорий
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                type TEXT NOT NULL,  -- 'income' или 'expense'
+                name TEXT NOT NULL,
+                is_active BOOLEAN DEFAULT 1,
+                UNIQUE(type, name)
+            )
+        ''')
+        
         conn.commit()
 
+def init_categories():
+    """Инициализация категорий по умолчанию"""
+    from categories import INCOME_CATEGORIES, EXPENSE_CATEGORIES
+    
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        
+        # Проверяем, есть ли уже категории
+        cursor.execute("SELECT COUNT(*) FROM categories")
+        count = cursor.fetchone()[0]
+        
+        if count == 0:
+            # Добавляем категории доходов
+            for category in INCOME_CATEGORIES:
+                cursor.execute(
+                    "INSERT INTO categories (type, name) VALUES (?, ?)",
+                    ('income', category)
+                )
+            
+            # Добавляем категории расходов
+            for category in EXPENSE_CATEGORIES:
+                cursor.execute(
+                    "INSERT INTO categories (type, name) VALUES (?, ?)",
+                    ('expense', category)
+                )
+            
+            conn.commit()
+            print("✅ Категории успешно загружены в БД")
+        else:
+            print(f"ℹ️ Категории уже существуют в БД (найдено {count} записей)")
+
+def get_categories(category_type: str = None) -> List[str]:
+    """
+    Получение списка категорий из БД
+    
+    Args:
+        category_type: 'income' или 'expense'. Если None - возвращает все
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        
+        if category_type:
+            cursor.execute(
+                "SELECT name FROM categories WHERE type = ? AND is_active = 1 ORDER BY name",
+                (category_type,)
+            )
+        else:
+            cursor.execute(
+                "SELECT name, type FROM categories WHERE is_active = 1 ORDER BY type, name"
+            )
+        
+        if category_type:
+            return [row['name'] for row in cursor.fetchall()]
+        else:
+            return [dict(row) for row in cursor.fetchall()]
+
+def add_category(category_type: str, name: str) -> bool:
+    """Добавление новой категории (для будущего расширения)"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "INSERT INTO categories (type, name) VALUES (?, ?)",
+                (category_type, name)
+            )
+            conn.commit()
+            return True
+    except sqlite3.IntegrityError:
+        return False  # Категория уже существует
+
+def delete_category(category_type: str, name: str) -> bool:
+    """Мягкое удаление категории (деактивация)"""
+    try:
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE categories SET is_active = 0 WHERE type = ? AND name = ?",
+                (category_type, name)
+            )
+            conn.commit()
+            return True
+    except Exception:
+        return False
+
+# Остальные функции остаются без изменений...
 def add_transaction(user_id: int, type: str, category: str, 
                     amount: float, description: str = "", 
                     is_saving_withdrawal: bool = False):
@@ -154,7 +250,6 @@ def get_analytics(user_id: int, period: str = "Месяц") -> Dict:
         total_saved = saving_row['total_saved'] or 0
         total_withdrawn = saving_row['total_withdrawn'] or 0
         
-        # Возвращаем данные
         return {
             'income_by_category': income_by_category,
             'expense_by_category': expense_by_category,

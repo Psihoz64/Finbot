@@ -4,7 +4,8 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (Application, CommandHandler, CallbackQueryHandler, 
                           MessageHandler, filters, ContextTypes)
 
-from config import BOT_TOKEN, INCOME_CATEGORIES, EXPENSE_CATEGORIES
+from config import BOT_TOKEN
+from database import get_categories, init_categories
 from database import (init_db, add_transaction, get_transactions, 
                       get_savings_balance, get_analytics)
 from keyboards import (main_menu_keyboard, categories_keyboard, 
@@ -42,6 +43,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     user_id = query.from_user.id
     
+    # Обработка возврата в главное меню
     if data == "back":
         await query.message.edit_text(
             "📋 Главное меню:",
@@ -49,25 +51,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Доходы
+    # --- ОБРАБОТКА ДОХОДОВ ---
     if data == "income":
         context.user_data['action'] = 'income'
+        income_categories = get_categories('income')
         await query.message.edit_text(
             "💰 Выберите категорию дохода:",
-            reply_markup=categories_keyboard(INCOME_CATEGORIES, 'income')
+            reply_markup=categories_keyboard(income_categories, 'income')
         )
         return
     
-    # Расходы
+    # --- ОБРАБОТКА РАСХОДОВ ---
     if data == "expense":
         context.user_data['action'] = 'expense'
+        expense_categories = get_categories('expense')
         await query.message.edit_text(
             "💸 Выберите категорию расхода:",
-            reply_markup=categories_keyboard(EXPENSE_CATEGORIES, 'expense')
+            reply_markup=categories_keyboard(expense_categories, 'expense')
         )
         return
     
-    # Накопления
+    # --- ОБРАБОТКА НАКОПЛЕНИЙ ---
     if data == "saving":
         balance = get_savings_balance(user_id)
         await query.message.edit_text(
@@ -79,7 +83,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Обработка пополнения накоплений
     if data == "saving_add":
         await query.message.edit_text(
             "💰 Введите сумму пополнения накоплений (в рублях):\n\n"
@@ -92,7 +95,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['saving_action'] = 'add'
         return
     
-    # Обработка снятия с накоплений
     if data == "saving_withdraw":
         balance = get_savings_balance(user_id)
         if balance <= 0:
@@ -115,7 +117,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['saving_action'] = 'withdraw'
         return
     
-    # Проверка баланса накоплений
     if data == "saving_balance":
         balance = get_savings_balance(user_id)
         await query.message.edit_text(
@@ -126,7 +127,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Аналитика
+    # --- ОБРАБОТКА АНАЛИТИКИ ---
     if data == "analytics":
         await query.message.edit_text(
             "📊 Выберите период для аналитики:",
@@ -134,7 +135,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Транзакции
+    # --- ОБРАБОТКА ТРАНЗАКЦИЙ ---
     if data == "transactions":
         transactions = get_transactions(user_id, limit=10)
         if not transactions:
@@ -159,7 +160,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Помощь
+    # --- ПОМОЩЬ ---
     if data == "help":
         await query.message.edit_text(
             "ℹ️ *Помощь по боту*\n\n"
@@ -175,7 +176,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Обработка выбора категории дохода
+    # --- ВЫБОР КАТЕГОРИИ ДОХОДА ---
     if data.startswith('income_'):
         category = data.split('_', 1)[1]
         context.user_data['income_category'] = category
@@ -191,7 +192,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Обработка выбора категории расхода
+    # --- ВЫБОР КАТЕГОРИИ РАСХОДА ---
     if data.startswith('expense_'):
         category = data.split('_', 1)[1]
         context.user_data['expense_category'] = category
@@ -207,7 +208,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Обработка выбора периода для аналитики
+    # --- ВЫБОР ПЕРИОДА ДЛЯ АНАЛИТИКИ ---
     if data.startswith('analytics_'):
         period = data.split('_', 1)[1]
         
@@ -224,6 +225,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         return
+    
+    # --- ЕСЛИ НИ ОДНО УСЛОВИЕ НЕ СРАБОТАЛО ---
+    await query.message.edit_text(
+        "❌ Неизвестная команда. Используйте кнопки меню.",
+        reply_markup=main_menu_keyboard()
+    )
 
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка текстового ввода (суммы транзакций)"""
@@ -410,6 +417,9 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     """Запуск бота"""
+    # Инициализируем категории при первом запуске
+    init_categories()
+    
     # Создаем приложение
     application = Application.builder().token(BOT_TOKEN).build()
     
