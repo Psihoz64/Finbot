@@ -45,7 +45,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик нажатий на кнопки"""
     query = update.callback_query
-    await query.answer()
+    
+    # Обрабатываем ошибку устаревшего запроса
+    try:
+        await query.answer()
+    except Exception as e:
+        if "Query is too old" in str(e) or "query id is invalid" in str(e):
+            # Просто игнорируем устаревшие запросы
+            return
+        raise e
     
     data = query.data
     user_id = query.from_user.id
