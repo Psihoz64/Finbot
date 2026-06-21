@@ -16,10 +16,11 @@ def main_menu_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 def categories_keyboard(categories, action_type):
-    """Клавиатура с категориями"""
+    """Клавиатура с категориями (с эмодзи)"""
     keyboard = []
     row = []
     for i, category in enumerate(categories):
+        # Категории уже содержат эмодзи из categories.py
         row.append(InlineKeyboardButton(category, callback_data=f"{action_type}_{category}"))
         if len(row) == 2:
             keyboard.append(row)

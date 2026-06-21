@@ -339,46 +339,47 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # --- ОБРАБОТКА ДОХОДА ---
     if income_category:
-        try:
-            parts = text.strip().split()
-            amount = float(parts[0])
-            description = " ".join(parts[1:]) if len(parts) > 1 else ""
-            
-            if amount <= 0:
-                await update.message.reply_text(
-                    "❌ Сумма должна быть больше 0. Попробуйте снова.",
-                    reply_markup=main_menu_keyboard()
-                )
-                return
-            
-            add_transaction(user_id, 'income', income_category, amount, description)
-            total_balance = get_total_balance(user_id)
-            
+    try:
+        parts = text.strip().split()
+        amount = float(parts[0])
+        description = " ".join(parts[1:]) if len(parts) > 1 else ""
+        
+        if amount <= 0:
             await update.message.reply_text(
-                f"✅ Доход добавлен:\n"
-                f"Категория: {income_category}\n"
-                f"Сумма: {amount:.2f} руб.\n"
-                f"Описание: {description if description else 'Нет'}\n\n"
-                f"💰 Общий баланс: {total_balance['current_balance']:.2f} руб.",
+                "❌ Сумма должна быть больше 0. Попробуйте снова.",
                 reply_markup=main_menu_keyboard()
             )
-            
-            context.user_data.pop('income_category', None)
-            
-        except ValueError:
-            await update.message.reply_text(
-                "❌ Некорректный формат. Введите сумму и описание через пробел.\n"
-                "Пример: 50000 Зарплата за июнь\n"
-                "Или просто: 50000",
-                reply_markup=main_menu_keyboard()
-            )
-        except IndexError:
-            await update.message.reply_text(
-                "❌ Введите сумму.\n"
-                "Пример: 50000 Зарплата за июнь",
-                reply_markup=main_menu_keyboard()
-            )
-        return
+            return
+        
+        # Сохраняем категорию с эмодзи
+        add_transaction(user_id, 'income', income_category, amount, description)
+        total_balance = get_total_balance(user_id)
+        
+        await update.message.reply_text(
+            f"✅ Доход добавлен:\n"
+            f"Категория: {income_category}\n"
+            f"Сумма: {amount:.2f} руб.\n"
+            f"Описание: {description if description else 'Нет'}\n\n"
+            f"💰 Общий баланс: {total_balance['current_balance']:.2f} руб.",
+            reply_markup=main_menu_keyboard()
+        )
+        
+        context.user_data.pop('income_category', None)
+        
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Некорректный формат. Введите сумму и описание через пробел.\n"
+            "Пример: 50000 Зарплата за июнь\n"
+            "Или просто: 50000",
+            reply_markup=main_menu_keyboard()
+        )
+    except IndexError:
+        await update.message.reply_text(
+            "❌ Введите сумму.\n"
+            "Пример: 50000 Зарплата за июнь",
+            reply_markup=main_menu_keyboard()
+        )
+    return
     
     # --- ОБРАБОТКА РАСХОДА ---
     if expense_category:

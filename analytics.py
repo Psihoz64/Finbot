@@ -1,5 +1,6 @@
 from datetime import datetime
 from database import get_savings_balance
+from categories import clean_category_name
 
 def generate_analytics_report(user_id: int, analytics_data: dict, period: str):
     """
@@ -41,6 +42,7 @@ def generate_analytics_report(user_id: int, analytics_data: dict, period: str):
             percentage = (amount / total_expenses * 100) if total_expenses > 0 else 0
             bar_length = int(percentage / 5)
             bar = "█" * bar_length + "░" * (20 - bar_length)
+            # Категория уже содержит эмодзи
             report += f"  {bar} {category}: {amount:,.2f} руб. ({percentage:.1f}%)\n"
         
         report += "\n" + "─" * 30 + "\n\n"
@@ -59,6 +61,7 @@ def generate_analytics_report(user_id: int, analytics_data: dict, period: str):
             percentage = (amount / total_income_amount * 100) if total_income_amount > 0 else 0
             bar_length = int(percentage / 5)
             bar = "█" * bar_length + "░" * (20 - bar_length)
+            # Категория уже содержит эмодзи
             report += f"  {bar} {category}: {amount:,.2f} руб. ({percentage:.1f}%)\n"
         
         report += "\n" + "─" * 30 + "\n\n"
@@ -90,7 +93,6 @@ def generate_analytics_report(user_id: int, analytics_data: dict, period: str):
     
     return report
 
-# Функция для совместимости (если где-то используется)
 def generate_category_chart(data: dict, title: str, color: str = '#3498db'):
     """Заглушка для совместимости (больше не используется)"""
     return None

@@ -56,7 +56,7 @@ def init_db():
         conn.commit()
 
 def init_categories():
-    """Инициализация категорий по умолчанию"""
+    """Инициализация категорий по умолчанию (с эмодзи)"""
     from categories import INCOME_CATEGORIES, EXPENSE_CATEGORIES
     
     with get_db_connection() as conn:
@@ -67,14 +67,14 @@ def init_categories():
         count = cursor.fetchone()[0]
         
         if count == 0:
-            # Добавляем категории доходов
+            # Добавляем категории доходов (уже с эмодзи)
             for category in INCOME_CATEGORIES:
                 cursor.execute(
                     "INSERT INTO categories (type, name) VALUES (?, ?)",
                     ('income', category)
                 )
             
-            # Добавляем категории расходов
+            # Добавляем категории расходов (уже с эмодзи)
             for category in EXPENSE_CATEGORIES:
                 cursor.execute(
                     "INSERT INTO categories (type, name) VALUES (?, ?)",
@@ -84,7 +84,7 @@ def init_categories():
             conn.commit()
             print("✅ Категории успешно загружены в БД")
         else:
-            print(f"ℹ️ Категории уже существуют в БД (найдено {count} записей)")
+            print(f"ℹ️ Категории уже существуют в БД (найдено {count} записей)") записей)")
 
 def get_categories(category_type: str = None) -> List[str]:
     """Получение списка категорий из БД"""
