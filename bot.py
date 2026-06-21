@@ -1,25 +1,37 @@
+# bot.py - ПОЛНАЯ ВЕРСИЯ С МОНИТОРИНГОМ
 import logging
+import asyncio
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (Application, CommandHandler, CallbackQueryHandler, 
                           MessageHandler, filters, ContextTypes)
 
-from config import BOT_TOKEN
+from config import BOT_TOKEN  # <--- ИЗМЕНЕНО: импортируем из config
 from database import (init_db, init_categories, add_transaction, get_transactions, 
                       get_savings_balance, get_analytics, get_total_balance, get_categories)
 from keyboards import (main_menu_keyboard, categories_keyboard, 
                        analytics_keyboard, saving_actions_keyboard)
 from analytics import generate_analytics_report
+from monitor import BotMonitor  # <--- НОВЫЙ ИМПОРТ
+from config import config  # <--- НОВЫЙ ИМПОРТ для настроек
 
 # Настройка логирования
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    level=getattr(logging, config.LOG_LEVEL)  # <--- ИЗМЕНЕНО: берем из config
 )
 logger = logging.getLogger(__name__)
 
 # Инициализация БД
 init_db()
+
+# === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ МОНИТОРИНГА (НОВЫЕ) ===
+monitor = None
+monitor_task = None
+
+# ============================================
+# ВСЕ ВАШИ СУЩЕСТВУЮЩИЕ ОБРАБОТЧИКИ ОСТАЮТСЯ БЕЗ ИЗМЕНЕНИЙ
+# ============================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
@@ -337,7 +349,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
     
-       # --- ОБРАБОТКА ДОХОДА ---
+    # --- ОБРАБОТКА ДОХОДА ---
     if income_category:
         try:
             parts = text.strip().split()
@@ -456,6 +468,78 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_menu_keyboard()
     )
 
+# ============================================
+# НОВЫЕ ОБРАБОТЧИКИ ДЛЯ МОНИТОРИНГА
+# ============================================
+
+async def healthcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Команда для проверки состояния бота (только для админов)"""
+    user_id = update.effective_user.id
+    
+    if user_id not in config.ADMIN_IDS:
+        await update.message.reply_text("⛔ У вас нет доступа к этой команде.")
+        return
+    
+    global monitor, monitor_task
+    if not monitor:
+        await update.message.reply_text("❌ Монитор не инициализирован.")
+        return
+    
+    is_healthy = await monitor.ping()
+    status_text = "✅ Бот работает" if is_healthy else "❌ Бот недоступен"
+    
+    last_ping_text = "Неизвестно"
+    if monitor.last_ping:
+        last_ping_text = monitor.last_ping.strftime('%d.%m.%Y %H:%M:%S')
+    
+    # Проверяем статус мониторинга
+    monitor_status = "🟢 Активен" if monitor_task and not monitor_task.done() else "🔴 Остановлен"
+    
+    await update.message.reply_text(
+        f"📊 **Статус мониторинга**\n\n"
+        f"Состояние бота: {status_text}\n"
+        f"Мониторинг: {monitor_status}\n"
+        f"Последний пинг: {last_ping_text}\n"
+        f"Администраторы: {', '.join(map(str, config.ADMIN_IDS))}\n\n"
+        f"Интервал проверки: {config.CHECK_INTERVAL}с\n"
+        f"Таймаут тревоги: {config.ALERT_TIMEOUT}с",
+        parse_mode='Markdown'
+    )
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Глобальный обработчик ошибок"""
+    logger.error(f"Ошибка: {context.error}")
+    
+    # Уведомляем админов о критической ошибке
+    for admin_id in config.ADMIN_IDS:
+        try:
+            await context.bot.send_message(
+                chat_id=admin_id,
+                text=f"❌ Критическая ошибка в боте:\n```\n{str(context.error)[:500]}\n```",
+                parse_mode='Markdown'
+            )
+        except:
+            pass
+
+# ============================================
+# ФУНКЦИЯ ЗАПУСКА МОНИТОРИНГА
+# ============================================
+
+async def start_monitoring(application: Application):
+    """Запускает мониторинг в фоновом режиме"""
+    global monitor, monitor_task
+    
+    logger.info("🔄 Инициализация мониторинга...")
+    monitor = BotMonitor(application.bot)
+    
+    # Запускаем мониторинг как фоновую задачу
+    monitor_task = asyncio.create_task(monitor.start_monitoring())
+    logger.info("✅ Мониторинг запущен в фоновом режиме")
+
+# ============================================
+# ГЛАВНАЯ ФУНКЦИЯ (ОБНОВЛЕННАЯ)
+# ============================================
+
 def main():
     """Запуск бота"""
     # Инициализируем категории при первом запуске
@@ -464,7 +548,7 @@ def main():
     # Создаем приложение
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # Регистрируем обработчики
+    # === РЕГИСТРИРУЕМ ВСЕ ВАШИ СУЩЕСТВУЮЩИЕ ОБРАБОТЧИКИ ===
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     
@@ -474,8 +558,17 @@ def main():
     # Обработчик текстовых сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
     
+    # === НОВЫЕ ОБРАБОТЧИКИ ДЛЯ МОНИТОРИНГА ===
+    application.add_handler(CommandHandler("healthcheck", healthcheck))
+    application.add_error_handler(error_handler)
+    
+    # === ЗАПУСКАЕМ МОНИТОРИНГ В ФОНОВОМ РЕЖИМЕ ===
+    # Используем asyncio для запуска мониторинга без блокировки основного цикла
+    loop = asyncio.get_event_loop()
+    loop.call_later(2, lambda: asyncio.create_task(start_monitoring(application)))
+    
     # Запускаем бота
-    print("🚀 Бот запущен!")
+    logger.info("🚀 Бот запущен!")
     application.run_polling()
 
 if __name__ == "__main__":

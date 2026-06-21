@@ -57,3 +57,12 @@ matplotlib/
 # Временные файлы
 temp/
 tmp/
+
+# .gitignore
+.env
+*.pyc
+__pycache__/
+instance/
+*.db
+logs/
+*.log
