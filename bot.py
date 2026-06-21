@@ -351,7 +351,6 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
-        # Сохраняем категорию с эмодзи
         add_transaction(user_id, 'income', income_category, amount, description)
         total_balance = get_total_balance(user_id)
         
