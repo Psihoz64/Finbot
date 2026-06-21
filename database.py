@@ -141,7 +141,7 @@ def get_analytics(user_id: int, period: str = "Месяц") -> Dict:
         ''', (user_id,))
         expense_by_category = {row['category']: row['total'] for row in cursor.fetchall()}
         
-        # Накопления
+        # Накопления (пополнения и снятия)
         cursor.execute(f'''
             SELECT 
                 SUM(CASE WHEN type = 'saving' AND is_saving_withdrawal = 0 THEN amount ELSE 0 END) as total_saved,
@@ -154,6 +154,7 @@ def get_analytics(user_id: int, period: str = "Месяц") -> Dict:
         total_saved = saving_row['total_saved'] or 0
         total_withdrawn = saving_row['total_withdrawn'] or 0
         
+        # Возвращаем данные
         return {
             'income_by_category': income_by_category,
             'expense_by_category': expense_by_category,
