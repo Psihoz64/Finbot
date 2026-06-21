@@ -81,40 +81,40 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # Обработка пополнения накоплений
-   if data == "saving_add":
-    await query.message.edit_text(
-        "💰 Введите сумму пополнения накоплений (в рублях):\n\n"
-        "Пример: 5000 или 10000.50\n\n"
-        "❗ Описание не требуется.",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("↩️ Отмена", callback_data="back")
-        ]])
-    )
-    context.user_data['saving_action'] = 'add'
-    return
+    if data == "saving_add":
+        await query.message.edit_text(
+            "💰 Введите сумму пополнения накоплений (в рублях):\n\n"
+            "Пример: 5000 или 10000.50\n\n"
+            "❗ Описание не требуется.",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("↩️ Отмена", callback_data="back")
+            ]])
+        )
+        context.user_data['saving_action'] = 'add'
+        return
     
     # Обработка снятия с накоплений
     if data == "saving_withdraw":
-    balance = get_savings_balance(user_id)
-    if balance <= 0:
+        balance = get_savings_balance(user_id)
+        if balance <= 0:
+            await query.message.edit_text(
+                "❌ У вас нет накоплений для снятия.",
+                reply_markup=main_menu_keyboard()
+            )
+            return
+        
         await query.message.edit_text(
-            "❌ У вас нет накоплений для снятия.",
-            reply_markup=main_menu_keyboard()
+            f"💸 Введите сумму снятия с накоплений (в рублях):\n"
+            f"Доступно: *{balance:.2f} руб.*\n\n"
+            "Пример: 3000 или 1500.75\n\n"
+            "❗ Описание не требуется.",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("↩️ Отмена", callback_data="back")
+            ]]),
+            parse_mode='Markdown'
         )
+        context.user_data['saving_action'] = 'withdraw'
         return
-    
-    await query.message.edit_text(
-        f"💸 Введите сумму снятия с накоплений (в рублях):\n"
-        f"Доступно: *{balance:.2f} руб.*\n\n"
-        "Пример: 3000 или 1500.75\n\n"
-        "❗ Описание не требуется.",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("↩️ Отмена", callback_data="back")
-        ]]),
-        parse_mode='Markdown'
-    )
-    context.user_data['saving_action'] = 'withdraw'
-    return
     
     # Проверка баланса накоплений
     if data == "saving_balance":
@@ -178,35 +178,35 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Обработка выбора категории дохода
     if data.startswith('income_'):
-    category = data.split('_', 1)[1]
-    context.user_data['income_category'] = category
-    await query.message.edit_text(
-        f"💰 *Доход: {category}*\n\n"
-        "Введите сумму и описание через пробел:\n"
-        "Пример: 50000 Зарплата за июнь\n"
-        "Или просто: 50000",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("↩️ Отмена", callback_data="back")
-        ]]),
-        parse_mode='Markdown'
-    )
-    return
+        category = data.split('_', 1)[1]
+        context.user_data['income_category'] = category
+        await query.message.edit_text(
+            f"💰 *Доход: {category}*\n\n"
+            "Введите сумму и описание через пробел:\n"
+            "Пример: 50000 Зарплата за июнь\n"
+            "Или просто: 50000",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("↩️ Отмена", callback_data="back")
+            ]]),
+            parse_mode='Markdown'
+        )
+        return
     
     # Обработка выбора категории расхода
     if data.startswith('expense_'):
-    category = data.split('_', 1)[1]
-    context.user_data['expense_category'] = category
-    await query.message.edit_text(
-        f"💸 *Расход: {category}*\n\n"
-        "Введите сумму и описание через пробел:\n"
-        "Пример: 1500 Продукты в Ашане\n"
-        "Или просто: 1500",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("↩️ Отмена", callback_data="back")
-        ]]),
-        parse_mode='Markdown'
-    )
-    return
+        category = data.split('_', 1)[1]
+        context.user_data['expense_category'] = category
+        await query.message.edit_text(
+            f"💸 *Расход: {category}*\n\n"
+            "Введите сумму и описание через пробел:\n"
+            "Пример: 1500 Продукты в Ашане\n"
+            "Или просто: 1500",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("↩️ Отмена", callback_data="back")
+            ]]),
+            parse_mode='Markdown'
+        )
+        return
     
     # Обработка выбора периода для аналитики
     if data.startswith('analytics_'):
