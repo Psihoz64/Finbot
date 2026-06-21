@@ -1,16 +1,15 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (Application, CommandHandler, CallbackQueryHandler, 
-                          MessageHandler, filters, ConversationHandler, ContextTypes)
+                          MessageHandler, filters, ContextTypes)
 
 from config import BOT_TOKEN, INCOME_CATEGORIES, EXPENSE_CATEGORIES
 from database import (init_db, add_transaction, get_transactions, 
                       get_savings_balance, get_analytics)
 from keyboards import (main_menu_keyboard, categories_keyboard, 
                        analytics_keyboard, saving_actions_keyboard)
-from states import States
-from analytics import generate_category_chart, generate_analytics_report
+from analytics import generate_analytics_report
 
 # Настройка логирования
 logging.basicConfig(
@@ -208,23 +207,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-  # Обработка выбора периода для аналитики
-if data.startswith('analytics_'):
-    period = data.split('_', 1)[1]
-    
-    # Получаем данные аналитики
-    analytics_data = get_analytics(user_id, period)
-    
-    # Генерация текстового отчета
-    report = generate_analytics_report(user_id, analytics_data, period)
-    
-    # Отправляем только текстовый отчет
-    await query.message.edit_text(
-        report,
-        reply_markup=main_menu_keyboard(),
-        parse_mode='Markdown'
-    )
-    return
+    # Обработка выбора периода для аналитики
+    if data.startswith('analytics_'):
+        period = data.split('_', 1)[1]
+        
+        # Получаем данные аналитики
+        analytics_data = get_analytics(user_id, period)
+        
+        # Генерация текстового отчета
+        report = generate_analytics_report(user_id, analytics_data, period)
+        
+        # Отправляем только текстовый отчет
+        await query.message.edit_text(
+            report,
+            reply_markup=main_menu_keyboard(),
+            parse_mode='Markdown'
+        )
+        return
 
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка текстового ввода (суммы транзакций)"""
