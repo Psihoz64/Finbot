@@ -81,38 +81,40 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # Обработка пополнения накоплений
-    if data == "saving_add":
-        await query.message.edit_text(
-            "💰 Введите сумму пополнения накоплений (в рублях):\n\n"
-            "Например: 5000 или 10000.50",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("↩️ Отмена", callback_data="back")
-            ]])
-        )
-        context.user_data['saving_action'] = 'add'
-        return
+   if data == "saving_add":
+    await query.message.edit_text(
+        "💰 Введите сумму пополнения накоплений (в рублях):\n\n"
+        "Пример: 5000 или 10000.50\n\n"
+        "❗ Описание не требуется.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("↩️ Отмена", callback_data="back")
+        ]])
+    )
+    context.user_data['saving_action'] = 'add'
+    return
     
     # Обработка снятия с накоплений
     if data == "saving_withdraw":
-        balance = get_savings_balance(user_id)
-        if balance <= 0:
-            await query.message.edit_text(
-                "❌ У вас нет накоплений для снятия.",
-                reply_markup=main_menu_keyboard()
-            )
-            return
-        
+    balance = get_savings_balance(user_id)
+    if balance <= 0:
         await query.message.edit_text(
-            f"💸 Введите сумму снятия с накоплений (в рублях):\n"
-            f"Доступно: *{balance:.2f} руб.*\n\n"
-            "Например: 3000 или 1500.75",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("↩️ Отмена", callback_data="back")
-            ]]),
-            parse_mode='Markdown'
+            "❌ У вас нет накоплений для снятия.",
+            reply_markup=main_menu_keyboard()
         )
-        context.user_data['saving_action'] = 'withdraw'
         return
+    
+    await query.message.edit_text(
+        f"💸 Введите сумму снятия с накоплений (в рублях):\n"
+        f"Доступно: *{balance:.2f} руб.*\n\n"
+        "Пример: 3000 или 1500.75\n\n"
+        "❗ Описание не требуется.",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("↩️ Отмена", callback_data="back")
+        ]]),
+        parse_mode='Markdown'
+    )
+    context.user_data['saving_action'] = 'withdraw'
+    return
     
     # Проверка баланса накоплений
     if data == "saving_balance":
@@ -176,39 +178,35 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Обработка выбора категории дохода
     if data.startswith('income_'):
-        category = data.split('_', 1)[1]
-        context.user_data['income_category'] = category
-        await query.message.edit_text(
-            f"💰 *Доход: {category}*\n\n"
-            "Введите сумму дохода (в рублях):\n"
-            "Например: 50000 или 45000.50\n\n"
-            "Также вы можете добавить описание (необязательно):\n"
-            "Сумма|Описание\n"
-            "Пример: 50000|Зарплата за июнь",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("↩️ Отмена", callback_data="back")
-            ]]),
-            parse_mode='Markdown'
-        )
-        return
+    category = data.split('_', 1)[1]
+    context.user_data['income_category'] = category
+    await query.message.edit_text(
+        f"💰 *Доход: {category}*\n\n"
+        "Введите сумму и описание через пробел:\n"
+        "Пример: 50000 Зарплата за июнь\n"
+        "Или просто: 50000",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("↩️ Отмена", callback_data="back")
+        ]]),
+        parse_mode='Markdown'
+    )
+    return
     
     # Обработка выбора категории расхода
     if data.startswith('expense_'):
-        category = data.split('_', 1)[1]
-        context.user_data['expense_category'] = category
-        await query.message.edit_text(
-            f"💸 *Расход: {category}*\n\n"
-            "Введите сумму расхода (в рублях):\n"
-            "Например: 1500 или 2340.99\n\n"
-            "Также вы можете добавить описание (необязательно):\n"
-            "Сумма|Описание\n"
-            "Пример: 1500|Продукты в Ашане",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("↩️ Отмена", callback_data="back")
-            ]]),
-            parse_mode='Markdown'
-        )
-        return
+    category = data.split('_', 1)[1]
+    context.user_data['expense_category'] = category
+    await query.message.edit_text(
+        f"💸 *Расход: {category}*\n\n"
+        "Введите сумму и описание через пробел:\n"
+        "Пример: 1500 Продукты в Ашане\n"
+        "Или просто: 1500",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("↩️ Отмена", callback_data="back")
+        ]]),
+        parse_mode='Markdown'
+    )
+    return
     
     # Обработка выбора периода для аналитики
     if data.startswith('analytics_'):
@@ -276,13 +274,11 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     income_category = context.user_data.get('income_category')
     expense_category = context.user_data.get('expense_category')
     
-    # Обработка пополнения/снятия накоплений
+    # Обработка пополнения/снятия накоплений (БЕЗ ОПИСАНИЯ)
     if saving_action in ['add', 'withdraw']:
         try:
-            # Парсим ввод (может быть с описанием)
-            parts = text.split('|')
-            amount = float(parts[0].strip())
-            description = parts[1].strip() if len(parts) > 1 else ""
+            # Парсим только число
+            amount = float(text.strip())
             
             if amount <= 0:
                 await update.message.reply_text(
@@ -292,7 +288,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             
             if saving_action == 'add':
-                add_transaction(user_id, 'saving', 'Накопления', amount, description, False)
+                add_transaction(user_id, 'saving', 'Накопления', amount, "", False)
                 balance = get_savings_balance(user_id)
                 await update.message.reply_text(
                     f"✅ Накопления пополнены на {amount:.2f} руб.\n"
@@ -308,7 +304,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     return
                 
-                add_transaction(user_id, 'saving', 'Накопления', amount, description, True)
+                add_transaction(user_id, 'saving', 'Накопления', amount, "", True)
                 new_balance = get_savings_balance(user_id)
                 await update.message.reply_text(
                     f"✅ Снято {amount:.2f} руб. с накоплений.\n"
@@ -321,18 +317,23 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         except ValueError:
             await update.message.reply_text(
-                "❌ Некорректный формат. Введите число (и опционально описание через |).\n"
-                "Пример: 5000 или 10000|Пополнение",
+                "❌ Некорректный формат. Введите число.\n"
+                "Пример: 5000 или 10000",
                 reply_markup=main_menu_keyboard()
             )
         return
     
-    # Обработка дохода
+    # Обработка дохода (с описанием через пробел)
     if income_category:
         try:
-            parts = text.split('|')
-            amount = float(parts[0].strip())
-            description = parts[1].strip() if len(parts) > 1 else ""
+            # Разбиваем строку на части по пробелам
+            parts = text.strip().split()
+            
+            # Первая часть - сумма
+            amount = float(parts[0])
+            
+            # Остальные части - описание (собираем обратно через пробел)
+            description = " ".join(parts[1:]) if len(parts) > 1 else ""
             
             if amount <= 0:
                 await update.message.reply_text(
@@ -355,18 +356,30 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         except ValueError:
             await update.message.reply_text(
-                "❌ Некорректный формат. Введите число (и опционально описание через |).\n"
-                "Пример: 50000 или 45000|Зарплата",
+                "❌ Некорректный формат. Введите сумму и описание через пробел.\n"
+                "Пример: 50000 Зарплата за июнь\n"
+                "Или просто: 50000",
+                reply_markup=main_menu_keyboard()
+            )
+        except IndexError:
+            await update.message.reply_text(
+                "❌ Введите сумму.\n"
+                "Пример: 50000 Зарплата за июнь",
                 reply_markup=main_menu_keyboard()
             )
         return
     
-    # Обработка расхода
+    # Обработка расхода (с описанием через пробел)
     if expense_category:
         try:
-            parts = text.split('|')
-            amount = float(parts[0].strip())
-            description = parts[1].strip() if len(parts) > 1 else ""
+            # Разбиваем строку на части по пробелам
+            parts = text.strip().split()
+            
+            # Первая часть - сумма
+            amount = float(parts[0])
+            
+            # Остальные части - описание (собираем обратно через пробел)
+            description = " ".join(parts[1:]) if len(parts) > 1 else ""
             
             if amount <= 0:
                 await update.message.reply_text(
@@ -389,8 +402,15 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         except ValueError:
             await update.message.reply_text(
-                "❌ Некорректный формат. Введите число (и опционально описание через |).\n"
-                "Пример: 1500 или 2000|Продукты",
+                "❌ Некорректный формат. Введите сумму и описание через пробел.\n"
+                "Пример: 1500 Продукты в Ашане\n"
+                "Или просто: 1500",
+                reply_markup=main_menu_keyboard()
+            )
+        except IndexError:
+            await update.message.reply_text(
+                "❌ Введите сумму.\n"
+                "Пример: 1500 Продукты в Ашане",
                 reply_markup=main_menu_keyboard()
             )
         return
