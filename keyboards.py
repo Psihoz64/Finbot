@@ -30,10 +30,11 @@ def categories_keyboard(categories, action_type):
 
 def analytics_keyboard():
     """Клавиатура для выбора периода аналитики"""
-    keyboard = []
-    for period in ANALYTICS_PERIODS:
-        keyboard.append([InlineKeyboardButton(period, callback_data=f"analytics_{period}")])
-    keyboard.append([InlineKeyboardButton("↩️ Назад", callback_data="back")])
+    keyboard = [
+        [InlineKeyboardButton("📅 Месяц", callback_data="analytics_Месяц")],
+        [InlineKeyboardButton("📆 Год", callback_data="analytics_Год")],
+        [InlineKeyboardButton("↩️ Назад", callback_data="back")]
+    ]
     return InlineKeyboardMarkup(keyboard)
 
 def saving_actions_keyboard():

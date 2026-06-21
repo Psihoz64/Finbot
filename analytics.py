@@ -1,58 +1,104 @@
-import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')
-from io import BytesIO
-from telegram import InputFile
-import tempfile
-import os
-
-def generate_category_chart(data: dict, title: str, color: str = '#3498db'):
-    """Генерация круговой диаграммы по категориям"""
-    if not data:
-        return None
-    
-    plt.figure(figsize=(10, 8))
-    
-    categories = list(data.keys())
-    values = list(data.values())
-    
-    # Если больше 5 категорий, остальные объединяем в "Другое"
-    if len(categories) > 5:
-        other_value = sum(values[5:])
-        categories = categories[:5] + ["Другое"]
-        values = values[:5] + [other_value]
-    
-    plt.pie(values, labels=categories, autopct='%1.1f%%', startangle=90,
-            colors=[color, '#2ecc71', '#e74c3c', '#f39c12', '#9b59b6', '#95a5a6'])
-    plt.title(title, fontsize=14, fontweight='bold')
-    plt.axis('equal')
-    
-    # Сохраняем в буфер
-    buf = BytesIO()
-    plt.savefig(buf, format='png', bbox_inches='tight', dpi=100)
-    buf.seek(0)
-    plt.close()
-    
-    return buf
+from datetime import datetime
+from database import get_savings_balance
 
 def generate_analytics_report(user_id: int, analytics_data: dict, period: str):
-    """Генерация отчета по аналитике"""
-    report = f"📊 *Аналитика за {period.lower()}*\n\n"
-    report += f"💰 *Доходы:* {analytics_data['total_income']:.2f} руб.\n"
-    report += f"💸 *Расходы:* {analytics_data['total_expense']:.2f} руб.\n"
-    report += f"🏦 *Накопления:*\n"
-    report += f"  • Пополнено: {analytics_data['total_saved']:.2f} руб.\n"
-    report += f"  • Снято: {analytics_data['total_withdrawn']:.2f} руб.\n"
-    report += f"  • Текущий баланс: {analytics_data['balance']:.2f} руб.\n\n"
+    """
+    Генерация текстового отчета по аналитике
     
-    if analytics_data['total_income'] > 0:
-        report += "*Доходы по категориям:*\n"
-        for cat, amount in analytics_data['income_by_category'].items():
-            report += f"  • {cat}: {amount:.2f} руб.\n"
+    Структура:
+    - Доходы за месяц: сумма
+    - Расходы за месяц: сумма
+    - Категории расходов с суммами
+    - Накопительный счет: баланс
+    - Изменение на накопительном счете за месяц
+    """
     
-    if analytics_data['total_expense'] > 0:
-        report += "\n*Расходы по категориям:*\n"
-        for cat, amount in analytics_data['expense_by_category'].items():
-            report += f"  • {cat}: {amount:.2f} руб.\n"
+    # Получаем текущий баланс накоплений
+    current_balance = get_savings_balance(user_id)
+    
+    # Формируем отчет
+    report = f"📊 *Финансовый отчет за {period.lower()}*\n"
+    report += "═" * 30 + "\n\n"
+    
+    # Доходы
+    total_income = analytics_data.get('total_income', 0)
+    report += f"💰 *Доходы:* {total_income:,.2f} руб.\n"
+    report += f"📈 *Расходы:* {analytics_data.get('total_expense', 0):,.2f} руб.\n\n"
+    
+    # Баланс (доходы - расходы)
+    balance = total_income - analytics_data.get('total_expense', 0)
+    if balance >= 0:
+        report += f"✅ *Баланс:* +{balance:,.2f} руб.\n"
+    else:
+        report += f"❌ *Баланс:* {balance:,.2f} руб.\n"
+    report += "\n" + "─" * 30 + "\n\n"
+    
+    # Расходы по категориям (сортировка по убыванию)
+    expense_by_category = analytics_data.get('expense_by_category', {})
+    if expense_by_category:
+        report += "📊 *Расходы по категориям:*\n"
+        # Сортируем по сумме (от больших к меньшим)
+        sorted_expenses = sorted(expense_by_category.items(), key=lambda x: x[1], reverse=True)
+        
+        total_expenses = analytics_data.get('total_expense', 0)
+        for category, amount in sorted_expenses:
+            # Вычисляем процент от общих расходов
+            percentage = (amount / total_expenses * 100) if total_expenses > 0 else 0
+            # Создаем визуальную шкалу
+            bar_length = int(percentage / 5)  # Максимум 20 символов
+            bar = "█" * bar_length + "░" * (20 - bar_length)
+            report += f"  {bar} {category}: {amount:,.2f} руб. ({percentage:.1f}%)\n"
+        
+        report += "\n" + "─" * 30 + "\n\n"
+    else:
+        report += "📊 *Расходы по категориям:*\n"
+        report += "  Нет расходов за этот период.\n\n"
+    
+    # Доходы по категориям (если есть)
+    income_by_category = analytics_data.get('income_by_category', {})
+    if income_by_category:
+        report += "💵 *Доходы по категориям:*\n"
+        sorted_incomes = sorted(income_by_category.items(), key=lambda x: x[1], reverse=True)
+        
+        total_income_amount = analytics_data.get('total_income', 0)
+        for category, amount in sorted_incomes:
+            percentage = (amount / total_income_amount * 100) if total_income_amount > 0 else 0
+            bar_length = int(percentage / 5)
+            bar = "█" * bar_length + "░" * (20 - bar_length)
+            report += f"  {bar} {category}: {amount:,.2f} руб. ({percentage:.1f}%)\n"
+        
+        report += "\n" + "─" * 30 + "\n\n"
+    
+    # Накопительный счет
+    report += "🏦 *Накопительный счет:*\n"
+    report += f"  Текущий баланс: *{current_balance:,.2f} руб.*\n"
+    
+    # Изменение на накопительном счете за период
+    total_saved = analytics_data.get('total_saved', 0)
+    total_withdrawn = analytics_data.get('total_withdrawn', 0)
+    net_change = total_saved - total_withdrawn
+    
+    if net_change > 0:
+        report += f"  📈 Изменение за период: +{net_change:,.2f} руб.\n"
+        report += f"     (Пополнено: {total_saved:,.2f} руб. | Снято: {total_withdrawn:,.2f} руб.)\n"
+    elif net_change < 0:
+        report += f"  📉 Изменение за период: {net_change:,.2f} руб.\n"
+        report += f"     (Пополнено: {total_saved:,.2f} руб. | Снято: {total_withdrawn:,.2f} руб.)\n"
+    else:
+        report += f"  ➖ Изменение за период: 0.00 руб.\n"
+        if total_saved > 0 or total_withdrawn > 0:
+            report += f"     (Пополнено: {total_saved:,.2f} руб. | Снято: {total_withdrawn:,.2f} руб.)\n"
+        else:
+            report += "     Нет операций с накоплениями за этот период.\n"
+    
+    report += "\n" + "═" * 30 + "\n"
+    report += f"📅 Отчет сгенерирован: {datetime.now().strftime('%d.%m.%Y %H:%M')}"
     
     return report
+
+# Функция для совместимости (если где-то используется)
+def generate_category_chart(data: dict, title: str, color: str = '#3498db'):
+    """Заглушка для совместимости (больше не используется)"""
+    return None

@@ -208,61 +208,23 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Обработка выбора периода для аналитики
-    if data.startswith('analytics_'):
-        period = data.split('_', 1)[1]
-        
-        analytics_data = get_analytics(user_id, period)
-        
-        # Генерация текстового отчета
-        report = generate_analytics_report(user_id, analytics_data, period)
-        
-        # Генерация диаграмм
-        media_group = []
-        
-        # Диаграмма доходов
-        if analytics_data['income_by_category']:
-            chart = generate_category_chart(
-                analytics_data['income_by_category'],
-                f"Доходы по категориям ({period.lower()})",
-                '#2ecc71'
-            )
-            if chart:
-                media_group.append(('income_chart.png', chart))
-        
-        # Диаграмма расходов
-        if analytics_data['expense_by_category']:
-            chart = generate_category_chart(
-                analytics_data['expense_by_category'],
-                f"Расходы по категориям ({period.lower()})",
-                '#e74c3c'
-            )
-            if chart:
-                media_group.append(('expense_chart.png', chart))
-        
-        # Отправка отчета
-        if media_group:
-            # Отправляем текст
-            await query.message.edit_text(
-                report,
-                reply_markup=main_menu_keyboard(),
-                parse_mode='Markdown'
-            )
-            
-            # Отправляем диаграммы
-            for filename, chart in media_group:
-                await query.message.reply_photo(
-                    photo=chart,
-                    caption=f"📊 {filename.replace('_chart.png', '').capitalize()}"
-                )
-                chart.close()
-        else:
-            await query.message.edit_text(
-                report + "\n\nℹ️ Нет данных для построения диаграмм.",
-                reply_markup=main_menu_keyboard(),
-                parse_mode='Markdown'
-            )
-        return
+  # Обработка выбора периода для аналитики
+if data.startswith('analytics_'):
+    period = data.split('_', 1)[1]
+    
+    # Получаем данные аналитики
+    analytics_data = get_analytics(user_id, period)
+    
+    # Генерация текстового отчета
+    report = generate_analytics_report(user_id, analytics_data, period)
+    
+    # Отправляем только текстовый отчет
+    await query.message.edit_text(
+        report,
+        reply_markup=main_menu_keyboard(),
+        parse_mode='Markdown'
+    )
+    return
 
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка текстового ввода (суммы транзакций)"""

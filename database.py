@@ -116,16 +116,12 @@ def get_analytics(user_id: int, period: str = "Месяц") -> Dict:
         cursor = conn.cursor()
         
         # Определяем дату начала периода
-        if period == "День":
-            date_filter = "datetime(date) >= datetime('now', 'start of day')"
-        elif period == "Неделя":
-            date_filter = "datetime(date) >= datetime('now', '-7 days')"
-        elif period == "Месяц":
+        if period == "Месяц":
             date_filter = "datetime(date) >= datetime('now', 'start of month')"
         elif period == "Год":
             date_filter = "datetime(date) >= datetime('now', 'start of year')"
         else:
-            date_filter = "1=1"
+            date_filter = "1=1"  # За всё время
         
         # Доходы по категориям
         cursor.execute(f'''
