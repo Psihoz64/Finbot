@@ -5,9 +5,8 @@ from telegram.ext import (Application, CommandHandler, CallbackQueryHandler,
                           MessageHandler, filters, ContextTypes)
 
 from config import BOT_TOKEN
-from database import get_categories, init_categories
-from database import (init_db, add_transaction, get_transactions, 
-                      get_savings_balance, get_analytics)
+from database import (init_db, init_categories, add_transaction, get_transactions, 
+                      get_savings_balance, get_analytics, get_total_balance, get_categories)
 from keyboards import (main_menu_keyboard, categories_keyboard, 
                        analytics_keyboard, saving_actions_keyboard)
 from analytics import generate_analytics_report
@@ -25,14 +24,22 @@ init_db()
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
     user = update.effective_user
+    user_id = user.id
+    
+    # Получаем общий баланс
+    balance_data = get_total_balance(user_id)
+    
     await update.message.reply_text(
         f"👋 Привет, {user.first_name}!\n\n"
+        f"💰 *Общий баланс:* {balance_data['current_balance']:.2f} руб.\n"
+        f"🏦 *Накопления:* {balance_data['savings_balance']:.2f} руб.\n\n"
         "Я твой финансовый помощник. Я помогу тебе:\n"
         "✅ Отслеживать доходы и расходы\n"
         "✅ Вести учет накоплений\n"
         "✅ Анализировать финансы\n\n"
         "Используй кнопки меню для навигации.",
-        reply_markup=main_menu_keyboard()
+        reply_markup=main_menu_keyboard(),
+        parse_mode='Markdown'
     )
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -43,15 +50,36 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     user_id = query.from_user.id
     
-    # Обработка возврата в главное меню
+    # Возврат в главное меню
     if data == "back":
+        balance_data = get_total_balance(user_id)
         await query.message.edit_text(
-            "📋 Главное меню:",
-            reply_markup=main_menu_keyboard()
+            f"📋 *Главное меню*\n\n"
+            f"💰 Баланс: {balance_data['current_balance']:.2f} руб.\n"
+            f"🏦 Накопления: {balance_data['savings_balance']:.2f} руб.",
+            reply_markup=main_menu_keyboard(),
+            parse_mode='Markdown'
         )
         return
     
-    # --- ОБРАБОТКА ДОХОДОВ ---
+    # --- БАЛАНС ---
+    if data == "balance":
+        balance_data = get_total_balance(user_id)
+        
+        await query.message.edit_text(
+            f"💳 *Финансовый баланс*\n\n"
+            f"💰 *Общий баланс:* {balance_data['current_balance']:,.2f} руб.\n"
+            f"├ Доходы всего: +{balance_data['total_income']:,.2f} руб.\n"
+            f"├ Расходы всего: -{balance_data['total_expense']:,.2f} руб.\n"
+            f"├ Вложено в накопления: -{balance_data['total_saved']:,.2f} руб.\n"
+            f"└ Снято с накоплений: +{balance_data['total_withdrawn']:,.2f} руб.\n\n"
+            f"🏦 *Накопительный счет:* {balance_data['savings_balance']:,.2f} руб.",
+            reply_markup=main_menu_keyboard(),
+            parse_mode='Markdown'
+        )
+        return
+    
+    # --- ДОХОДЫ ---
     if data == "income":
         context.user_data['action'] = 'income'
         income_categories = get_categories('income')
@@ -61,7 +89,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # --- ОБРАБОТКА РАСХОДОВ ---
+    # --- РАСХОДЫ ---
     if data == "expense":
         context.user_data['action'] = 'expense'
         expense_categories = get_categories('expense')
@@ -71,7 +99,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # --- ОБРАБОТКА НАКОПЛЕНИЙ ---
+    # --- НАКОПЛЕНИЯ ---
     if data == "saving":
         balance = get_savings_balance(user_id)
         await query.message.edit_text(
@@ -87,7 +115,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text(
             "💰 Введите сумму пополнения накоплений (в рублях):\n\n"
             "Пример: 5000 или 10000.50\n\n"
-            "❗ Описание не требуется.",
+            "❗ Описание не требуется.\n"
+            "💡 Эти деньги будут списаны с основного баланса.",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("↩️ Отмена", callback_data="back")
             ]])
@@ -108,7 +137,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💸 Введите сумму снятия с накоплений (в рублях):\n"
             f"Доступно: *{balance:.2f} руб.*\n\n"
             "Пример: 3000 или 1500.75\n\n"
-            "❗ Описание не требуется.",
+            "❗ Описание не требуется.\n"
+            "💡 Эти деньги будут зачислены на основной баланс.",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("↩️ Отмена", callback_data="back")
             ]]),
@@ -127,7 +157,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # --- ОБРАБОТКА АНАЛИТИКИ ---
+    # --- АНАЛИТИКА ---
     if data == "analytics":
         await query.message.edit_text(
             "📊 Выберите период для аналитики:",
@@ -135,7 +165,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # --- ОБРАБОТКА ТРАНЗАКЦИЙ ---
+    # --- ТРАНЗАКЦИИ ---
     if data == "transactions":
         transactions = get_transactions(user_id, limit=10)
         if not transactions:
@@ -169,7 +199,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💸 *Расходы* - добавляйте расходы по категориям\n"
             "🏦 *Накопления* - пополняйте и снимайте накопления\n"
             "📊 *Аналитика* - смотрите статистику за период\n"
-            "📋 *Транзакции* - просмотр последних операций\n\n"
+            "📋 *Транзакции* - просмотр последних операций\n"
+            "💳 *Баланс* - детальный баланс всех операций\n\n"
             "Просто нажимай кнопки и следуй инструкциям!",
             reply_markup=main_menu_keyboard(),
             parse_mode='Markdown'
@@ -242,10 +273,9 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     income_category = context.user_data.get('income_category')
     expense_category = context.user_data.get('expense_category')
     
-    # Обработка пополнения/снятия накоплений (БЕЗ ОПИСАНИЯ)
+    # --- ОБРАБОТКА НАКОПЛЕНИЙ (БЕЗ ОПИСАНИЯ) ---
     if saving_action in ['add', 'withdraw']:
         try:
-            # Парсим только число
             amount = float(text.strip())
             
             if amount <= 0:
@@ -256,14 +286,19 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             
             if saving_action == 'add':
+                # Пополнение накоплений
                 add_transaction(user_id, 'saving', 'Накопления', amount, "", False)
                 balance = get_savings_balance(user_id)
+                total_balance = get_total_balance(user_id)
+                
                 await update.message.reply_text(
                     f"✅ Накопления пополнены на {amount:.2f} руб.\n"
-                    f"Текущий баланс: {balance:.2f} руб.",
+                    f"🏦 Баланс накоплений: {balance:.2f} руб.\n"
+                    f"💰 Общий баланс: {total_balance['current_balance']:.2f} руб.",
                     reply_markup=main_menu_keyboard()
                 )
             else:  # withdraw
+                # Снятие с накоплений
                 balance = get_savings_balance(user_id)
                 if amount > balance:
                     await update.message.reply_text(
@@ -274,9 +309,12 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 add_transaction(user_id, 'saving', 'Накопления', amount, "", True)
                 new_balance = get_savings_balance(user_id)
+                total_balance = get_total_balance(user_id)
+                
                 await update.message.reply_text(
                     f"✅ Снято {amount:.2f} руб. с накоплений.\n"
-                    f"Остаток: {new_balance:.2f} руб.",
+                    f"🏦 Баланс накоплений: {new_balance:.2f} руб.\n"
+                    f"💰 Общий баланс: {total_balance['current_balance']:.2f} руб.",
                     reply_markup=main_menu_keyboard()
                 )
             
@@ -291,16 +329,11 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
     
-    # Обработка дохода (с описанием через пробел)
+    # --- ОБРАБОТКА ДОХОДА ---
     if income_category:
         try:
-            # Разбиваем строку на части по пробелам
             parts = text.strip().split()
-            
-            # Первая часть - сумма
             amount = float(parts[0])
-            
-            # Остальные части - описание (собираем обратно через пробел)
             description = " ".join(parts[1:]) if len(parts) > 1 else ""
             
             if amount <= 0:
@@ -311,15 +344,17 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             
             add_transaction(user_id, 'income', income_category, amount, description)
+            total_balance = get_total_balance(user_id)
+            
             await update.message.reply_text(
                 f"✅ Доход добавлен:\n"
                 f"Категория: {income_category}\n"
                 f"Сумма: {amount:.2f} руб.\n"
-                f"Описание: {description if description else 'Нет'}",
+                f"Описание: {description if description else 'Нет'}\n\n"
+                f"💰 Общий баланс: {total_balance['current_balance']:.2f} руб.",
                 reply_markup=main_menu_keyboard()
             )
             
-            # Очищаем состояние
             context.user_data.pop('income_category', None)
             
         except ValueError:
@@ -337,16 +372,11 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
     
-    # Обработка расхода (с описанием через пробел)
+    # --- ОБРАБОТКА РАСХОДА ---
     if expense_category:
         try:
-            # Разбиваем строку на части по пробелам
             parts = text.strip().split()
-            
-            # Первая часть - сумма
             amount = float(parts[0])
-            
-            # Остальные части - описание (собираем обратно через пробел)
             description = " ".join(parts[1:]) if len(parts) > 1 else ""
             
             if amount <= 0:
@@ -357,15 +387,17 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
             
             add_transaction(user_id, 'expense', expense_category, amount, description)
+            total_balance = get_total_balance(user_id)
+            
             await update.message.reply_text(
                 f"✅ Расход добавлен:\n"
                 f"Категория: {expense_category}\n"
                 f"Сумма: {amount:.2f} руб.\n"
-                f"Описание: {description if description else 'Нет'}",
+                f"Описание: {description if description else 'Нет'}\n\n"
+                f"💰 Общий баланс: {total_balance['current_balance']:.2f} руб.",
                 reply_markup=main_menu_keyboard()
             )
             
-            # Очищаем состояние
             context.user_data.pop('expense_category', None)
             
         except ValueError:
@@ -402,7 +434,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💸 Добавления расходов\n"
         "🏦 Управления накоплениями\n"
         "📊 Просмотра аналитики\n"
-        "📋 Просмотра транзакций",
+        "📋 Просмотра транзакций\n"
+        "💳 Просмотра баланса",
         parse_mode='Markdown',
         reply_markup=main_menu_keyboard()
     )

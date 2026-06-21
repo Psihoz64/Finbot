@@ -42,7 +42,7 @@ def init_db():
             )
         ''')
         
-        # Новая таблица для категорий
+        # Таблица для категорий
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS categories (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,12 +87,7 @@ def init_categories():
             print(f"ℹ️ Категории уже существуют в БД (найдено {count} записей)")
 
 def get_categories(category_type: str = None) -> List[str]:
-    """
-    Получение списка категорий из БД
-    
-    Args:
-        category_type: 'income' или 'expense'. Если None - возвращает все
-    """
+    """Получение списка категорий из БД"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
@@ -101,49 +96,69 @@ def get_categories(category_type: str = None) -> List[str]:
                 "SELECT name FROM categories WHERE type = ? AND is_active = 1 ORDER BY name",
                 (category_type,)
             )
+            return [row['name'] for row in cursor.fetchall()]
         else:
             cursor.execute(
                 "SELECT name, type FROM categories WHERE is_active = 1 ORDER BY type, name"
             )
-        
-        if category_type:
-            return [row['name'] for row in cursor.fetchall()]
-        else:
             return [dict(row) for row in cursor.fetchall()]
 
-def add_category(category_type: str, name: str) -> bool:
-    """Добавление новой категории (для будущего расширения)"""
-    try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO categories (type, name) VALUES (?, ?)",
-                (category_type, name)
-            )
-            conn.commit()
-            return True
-    except sqlite3.IntegrityError:
-        return False  # Категория уже существует
+def get_total_balance(user_id: int) -> Dict:
+    """
+    Расчет общего баланса пользователя
+    
+    Общий баланс = (Все доходы) - (Все расходы) - (Вложения в накопления) + (Снятия с накоплений)
+    """
+    with get_db_connection() as conn:
+        cursor = conn.cursor()
+        
+        # Общий доход
+        cursor.execute(
+            "SELECT SUM(amount) FROM transactions WHERE user_id = ? AND type = 'income'",
+            (user_id,)
+        )
+        total_income = cursor.fetchone()[0] or 0
+        
+        # Общий расход (без учета накоплений)
+        cursor.execute(
+            "SELECT SUM(amount) FROM transactions WHERE user_id = ? AND type = 'expense'",
+            (user_id,)
+        )
+        total_expense = cursor.fetchone()[0] or 0
+        
+        # Вложения в накопления (пополнения)
+        cursor.execute(
+            "SELECT SUM(amount) FROM transactions WHERE user_id = ? AND type = 'saving' AND is_saving_withdrawal = 0",
+            (user_id,)
+        )
+        total_saved = cursor.fetchone()[0] or 0
+        
+        # Снятия с накоплений
+        cursor.execute(
+            "SELECT SUM(amount) FROM transactions WHERE user_id = ? AND type = 'saving' AND is_saving_withdrawal = 1",
+            (user_id,)
+        )
+        total_withdrawn = cursor.fetchone()[0] or 0
+        
+        # Общий баланс = доходы - расходы - пополнения накоплений + снятия с накоплений
+        current_balance = total_income - total_expense - total_saved + total_withdrawn
+        
+        # Баланс накоплений
+        savings_balance = get_savings_balance(user_id)
+        
+        return {
+            'total_income': total_income,
+            'total_expense': total_expense,
+            'total_saved': total_saved,
+            'total_withdrawn': total_withdrawn,
+            'current_balance': current_balance,
+            'savings_balance': savings_balance
+        }
 
-def delete_category(category_type: str, name: str) -> bool:
-    """Мягкое удаление категории (деактивация)"""
-    try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE categories SET is_active = 0 WHERE type = ? AND name = ?",
-                (category_type, name)
-            )
-            conn.commit()
-            return True
-    except Exception:
-        return False
-
-# Остальные функции остаются без изменений...
 def add_transaction(user_id: int, type: str, category: str, 
                     amount: float, description: str = "", 
                     is_saving_withdrawal: bool = False):
-    """Добавление новой транзакции"""
+    """Добавление новой транзакции с учетом влияния на общий баланс"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
@@ -153,21 +168,23 @@ def add_transaction(user_id: int, type: str, category: str,
             VALUES (?, ?, ?, ?, ?, ?)
         ''', (user_id, type, category, amount, description, is_saving_withdrawal))
         
-        # Если это пополнение накоплений
-        if type == 'saving' and not is_saving_withdrawal:
-            cursor.execute('''
-                INSERT INTO savings_balance (user_id, balance)
-                VALUES (?, ?)
-                ON CONFLICT(user_id) DO UPDATE SET 
-                balance = balance + ?
-            ''', (user_id, amount, amount))
-        # Если это списание с накоплений
-        elif type == 'saving' and is_saving_withdrawal:
-            cursor.execute('''
-                UPDATE savings_balance 
-                SET balance = balance - ?
-                WHERE user_id = ?
-            ''', (amount, user_id))
+        # Логика для накоплений
+        if type == 'saving':
+            if not is_saving_withdrawal:
+                # Пополнение накоплений: списываем с основного баланса
+                cursor.execute('''
+                    INSERT INTO savings_balance (user_id, balance)
+                    VALUES (?, ?)
+                    ON CONFLICT(user_id) DO UPDATE SET 
+                    balance = balance + ?
+                ''', (user_id, amount, amount))
+            else:
+                # Снятие с накоплений: зачисляем на основной баланс
+                cursor.execute('''
+                    UPDATE savings_balance 
+                    SET balance = balance - ?
+                    WHERE user_id = ?
+                ''', (amount, user_id))
         
         conn.commit()
         return cursor.lastrowid
@@ -250,6 +267,9 @@ def get_analytics(user_id: int, period: str = "Месяц") -> Dict:
         total_saved = saving_row['total_saved'] or 0
         total_withdrawn = saving_row['total_withdrawn'] or 0
         
+        # Получаем общий баланс
+        balance_data = get_total_balance(user_id)
+        
         return {
             'income_by_category': income_by_category,
             'expense_by_category': expense_by_category,
@@ -257,5 +277,6 @@ def get_analytics(user_id: int, period: str = "Месяц") -> Dict:
             'total_expense': sum(expense_by_category.values()),
             'total_saved': total_saved,
             'total_withdrawn': total_withdrawn,
-            'balance': get_savings_balance(user_id)
+            'balance': balance_data['savings_balance'],
+            'current_balance': balance_data['current_balance']
         }

@@ -1,5 +1,6 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from config import INCOME_CATEGORIES, EXPENSE_CATEGORIES, ANALYTICS_PERIODS
+from config import ANALYTICS_PERIODS
+from database import get_categories
 
 def main_menu_keyboard():
     """Главное меню"""
@@ -9,6 +10,7 @@ def main_menu_keyboard():
         [InlineKeyboardButton("🏦 Накопления", callback_data="saving")],
         [InlineKeyboardButton("📊 Аналитика", callback_data="analytics")],
         [InlineKeyboardButton("📋 Мои транзакции", callback_data="transactions")],
+        [InlineKeyboardButton("💳 Баланс", callback_data="balance")],
         [InlineKeyboardButton("ℹ️ Помощь", callback_data="help")]
     ]
     return InlineKeyboardMarkup(keyboard)
