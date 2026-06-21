@@ -1,0 +1,12 @@
+from enum import Enum
+
+class States(Enum):
+    """Состояния для ConversationHandler"""
+    MAIN_MENU = 0
+    WAITING_INCOME_CATEGORY = 1
+    WAITING_INCOME_AMOUNT = 2
+    WAITING_EXPENSE_CATEGORY = 3
+    WAITING_EXPENSE_AMOUNT = 4
+    WAITING_SAVING_AMOUNT = 5
+    WAITING_SAVING_WITHDRAWAL_AMOUNT = 6
+    WAITING_ANALYTICS_PERIOD = 7
