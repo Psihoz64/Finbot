@@ -84,7 +84,7 @@ def init_categories():
             conn.commit()
             print("✅ Категории успешно загружены в БД")
         else:
-            print(f"ℹ️ Категории уже существуют в БД (найдено {count} записей)") записей)")
+          print(f"ℹ Категории уже существуют в БД (найдено {count} записей)")
 
 def get_categories(category_type: str = None) -> List[str]:
     """Получение списка категорий из БД"""
