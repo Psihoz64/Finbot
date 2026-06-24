@@ -7,8 +7,10 @@ from telegram.ext import (Application, CommandHandler, CallbackQueryHandler,
                           MessageHandler, filters, ContextTypes)
 
 from config import BOT_TOKEN  # <--- ИЗМЕНЕНО: импортируем из config
-from database import (init_db, init_categories, add_transaction, get_transactions, 
-                      get_savings_balance, get_analytics, get_total_balance, get_categories)
+from database import (
+    init_db, init_categories, add_transaction, get_transactions,
+    get_savings_balance, get_analytics, get_total_balance, get_categories,
+    check_month_has_data, get_analytics_for_month)
 from keyboards import (main_menu_keyboard, categories_keyboard, 
                        analytics_keyboard, saving_actions_keyboard)
 from analytics import generate_analytics_report
@@ -205,21 +207,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # --- ВЫБОР МЕСЯЦА ДЛЯ АНАЛИТИКИ ---
     if data == "analytics_choose_month":
-        now = datetime.now()
-        context.user_data['analytics_year'] = now.year
-        context.user_data['analytics_month'] = now.month
-        
-        # Проверяем, есть ли данные за предыдущий месяц
-        has_prev = check_month_has_data(user_id, now.year, now.month - 1)
-        
-        await safe_edit_message(
-            query,
-            "📅 *Выберите месяц для аналитики*\n\n"
-            "Используйте стрелки для навигации:",
-            reply_markup=month_navigation_keyboard(now.year, now.month, has_prev=has_prev),
-            parse_mode='Markdown'
-        )
-        return
+      now = datetime.now()
+    context.user_data['analytics_year'] = now.year
+    context.user_data['analytics_month'] = now.month
+    
+    await safe_edit_message(
+        query,
+        "📅 *Выберите месяц для аналитики*\n\n"
+        "Используйте стрелки для навигации:",
+        reply_markup=month_navigation_keyboard(now.year, now.month, has_prev=True),
+        parse_mode='Markdown'
+    )
+    return
+
     
     # --- НАВИГАЦИЯ ПО МЕСЯЦАМ: НАЗАД ---
     if data == "month_prev":
