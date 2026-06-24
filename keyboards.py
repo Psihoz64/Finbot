@@ -10,7 +10,7 @@ def main_menu_keyboard():
          InlineKeyboardButton("💸 Расходы", callback_data="expense")],
         [InlineKeyboardButton("🏦 Накопления", callback_data="saving"), 
          InlineKeyboardButton("📊 Аналитика", callback_data="analytics")],
-        [InlineKeyboardButton("📋 Мои транзакции", callback_data="transactions"), 
+        [InlineKeyboardButton("📋 Транзакции", callback_data="transactions"), 
          InlineKeyboardButton("💳 Баланс", callback_data="balance"),
          InlineKeyboardButton("ℹ️", callback_data="help")]
     ]
@@ -64,7 +64,6 @@ def saving_actions_keyboard():
     keyboard = [
         [InlineKeyboardButton("➕ Пополнить", callback_data="saving_add")],
         [InlineKeyboardButton("➖ Снять", callback_data="saving_withdraw")],
-        [InlineKeyboardButton("📊 Баланс", callback_data="saving_balance")],
         [InlineKeyboardButton("↩️ Назад", callback_data="back")]
     ]
     return InlineKeyboardMarkup(keyboard)
