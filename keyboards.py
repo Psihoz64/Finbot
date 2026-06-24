@@ -4,7 +4,7 @@ from database import get_categories
 from datetime import datetime, timedelta
 
 def main_menu_keyboard():
-    """Главное меню (компактная версия с ❓ в строке)"""
+    """Главное меню"""
     keyboard = [
         [InlineKeyboardButton("💰 Доходы", callback_data="income"), 
          InlineKeyboardButton("💸 Расходы", callback_data="expense")],
@@ -12,7 +12,7 @@ def main_menu_keyboard():
          InlineKeyboardButton("📊 Аналитика", callback_data="analytics")],
         [InlineKeyboardButton("📋 Мои транзакции", callback_data="transactions"), 
          InlineKeyboardButton("💳 Баланс", callback_data="balance"),
-         InlineKeyboardButton("❓", callback_data="help")]
+         InlineKeyboardButton("ℹ️", callback_data="help")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
