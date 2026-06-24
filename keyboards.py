@@ -11,7 +11,7 @@ def main_menu_keyboard():
          InlineKeyboardButton("📊 Аналитика", callback_data="analytics")],
         [InlineKeyboardButton("📋 Мои транзакции", callback_data="transactions"), 
          InlineKeyboardButton("💳 Баланс", callback_data="balance"),
-         InlineKeyboardButton("❓", callback_data="help")]  # <-- Третья кнопка в строке!
+         InlineKeyboardButton("ℹ️", callback_data="help")]  # <-- Третья кнопка в строке!
     ]
     return InlineKeyboardMarkup(keyboard)
 
