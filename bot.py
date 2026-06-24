@@ -269,63 +269,61 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # --- НАВИГАЦИЯ ПО МЕСЯЦАМ: НАЗАД ---
     if data == "month_prev":
-        year = context.user_data.get('analytics_year', datetime.now().year)
-        month = context.user_data.get('analytics_month', datetime.now().month)
-        
-        # Перемещаемся на месяц назад
-        if month == 1:
-            month = 12
-            year -= 1
-        else:
-            month -= 1
-        
-        context.user_data['analytics_year'] = year
-        context.user_data['analytics_month'] = month
-        
-        # Проверяем наличие данных за предыдущий/следующий месяц
-        has_prev = check_month_has_data(user_id, year, month - 1)
-        has_next = check_month_has_data(user_id, year, month + 1)
-        
-        await safe_edit_message(
-            query,
-            f"📅 *{['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][month-1]} {year}*\n\n"
-            "Нажмите 'Показать отчет' для просмотра статистики.",
-            reply_markup=month_navigation_keyboard(year, month, has_prev, has_next),
-            parse_mode='Markdown'
-        )
-        return
+     year = context.user_data.get('analytics_year', now.year)
+    month = context.user_data.get('analytics_month', now.month)
+    
+    # Проверяем, есть ли куда двигаться
+    if month == 1:
+        # Если январь, то проверяем, есть ли данные за предыдущий год
+        has_prev_data = check_month_has_data(user_id, year - 1, 12)
+        if not has_prev_data:
+            await query.answer("❌ Нет данных за предыдущий месяц")
+            return
+        month = 12
+        year -= 1
+    else:
+        month -= 1
+    
+    context.user_data['analytics_year'] = year
+    context.user_data['analytics_month'] = month
+    
+    await safe_edit_message(
+        query,
+        f"📅 *{['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][month-1]} {year}*\n\n"
+        "Нажмите 'Показать отчет' для просмотра статистики.",
+        reply_markup=month_navigation_keyboard(year, month),
+        parse_mode='Markdown'
+    )
+    return
     
     # --- НАВИГАЦИЯ ПО МЕСЯЦАМ: ВПЕРЕД ---
     if data == "month_next":
-        year = context.user_data.get('analytics_year', datetime.now().year)
-        month = context.user_data.get('analytics_month', datetime.now().month)
-        
-        # Проверяем, не пытаемся ли мы уйти в будущее
-        if year > now.year or (year == now.year and month >= now.month):
-            await query.answer("❌ Нельзя выбрать будущий месяц")
-            return
-        
-        # Перемещаемся на месяц вперед
-        if month == 12:
-            month = 1
-            year += 1
-        else:
-            month += 1
-        
-        context.user_data['analytics_year'] = year
-        context.user_data['analytics_month'] = month
-        
-        has_prev = check_month_has_data(user_id, year, month - 1)
-        has_next = check_month_has_data(user_id, year, month + 1)
-        
-        await safe_edit_message(
-            query,
-            f"📅 *{['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][month-1]} {year}*\n\n"
-            "Нажмите 'Показать отчет' для просмотра статистики.",
-            reply_markup=month_navigation_keyboard(year, month, has_prev, has_next),
-            parse_mode='Markdown'
-        )
+     year = context.user_data.get('analytics_year', now.year)
+    month = context.user_data.get('analytics_month', now.month)
+    
+    # Проверяем, не пытаемся ли мы уйти в будущее
+    if year > now.year or (year == now.year and month >= now.month):
+        await query.answer("❌ Нельзя выбрать будущий месяц")
         return
+    
+    if month == 12:
+        month = 1
+        year += 1
+    else:
+        month += 1
+    
+    context.user_data['analytics_year'] = year
+    context.user_data['analytics_month'] = month
+    
+    await safe_edit_message(
+        query,
+        f"📅 *{['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][month-1]} {year}*\n\n"
+        "Нажмите 'Показать отчет' для просмотра статистики.",
+        reply_markup=month_navigation_keyboard(year, month),
+        parse_mode='Markdown'
+    )
+    return
+
     
     # --- ПОКАЗ ОТЧЕТА ЗА ВЫБРАННЫЙ МЕСЯЦ ---
     if data.startswith('month_show_'):
