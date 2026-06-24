@@ -11,8 +11,10 @@ from database import (
     init_db, init_categories, add_transaction, get_transactions,
     get_savings_balance, get_analytics, get_total_balance, get_categories,
     check_month_has_data, get_analytics_for_month)
-from keyboards import (main_menu_keyboard, categories_keyboard, 
-                       analytics_keyboard, saving_actions_keyboard)
+from keyboards import (
+    main_menu_keyboard, categories_keyboard,
+    analytics_keyboard, saving_actions_keyboard,
+    month_navigation_keyboard)
 from analytics import generate_analytics_report
 from monitor import BotMonitor  # <--- НОВЫЙ ИМПОРТ
 from config import config  # <--- НОВЫЙ ИМПОРТ для настроек
@@ -322,16 +324,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # --- ТЕКУЩИЙ ГОД ---
     if data == "analytics_год":
-        analytics_data = get_analytics(user_id, "Год")
-        report = generate_analytics_report(user_id, analytics_data, "Год")
+     now = datetime.now()  
+     report = generate_analytics_report(user_id, analytics_data, "Год")
         
-        await safe_edit_message(
+    await safe_edit_message(
             query,
             report,
             reply_markup=main_menu_keyboard(),
             parse_mode='Markdown'
         )
-        return
+    return
     
     # --- ТРАНЗАКЦИИ ---
     if data == "transactions":
