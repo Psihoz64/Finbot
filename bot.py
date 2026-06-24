@@ -15,7 +15,7 @@ from keyboards import (
     main_menu_keyboard, categories_keyboard,
     analytics_keyboard, saving_actions_keyboard,
     month_navigation_keyboard)
-from analytics import generate_analytics_report
+from analytics import generate_analytics_report, generate_monthly_report
 from monitor import BotMonitor  # <--- НОВЫЙ ИМПОРТ
 from config import config  # <--- НОВЫЙ ИМПОРТ для настроек
 from telegram.error import BadRequest
