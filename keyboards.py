@@ -41,8 +41,8 @@ def analytics_keyboard():
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def month_navigation_keyboard(year: int, month: int):
-    """Клавиатура для навигации по месяцам (всегда показываем стрелки)"""
+def month_navigation_keyboard(year: int, month: int, has_prev: bool = True):
+    """Клавиатура для навигации по месяцам"""
     month_names = [
         "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
         "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
@@ -50,7 +50,7 @@ def month_navigation_keyboard(year: int, month: int):
     
     keyboard = [
         [
-            InlineKeyboardButton("◀️", callback_data="month_prev"),
+            InlineKeyboardButton("◀️", callback_data="month_prev") if has_prev else InlineKeyboardButton(" ", callback_data="noop"),
             InlineKeyboardButton(f"{month_names[month-1]} {year}", callback_data="noop"),
             InlineKeyboardButton("▶️", callback_data="month_next")
         ],
