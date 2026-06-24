@@ -196,8 +196,140 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "analytics":
         await safe_edit_message(
             query,
-            "📊 Выберите период для аналитики:",
-            reply_markup=analytics_keyboard()
+            "📊 *Аналитика*\n\n"
+            "Выберите период для отчета:",
+            reply_markup=analytics_keyboard(),
+            parse_mode='Markdown'
+        )
+        return
+    
+    # --- ВЫБОР МЕСЯЦА ДЛЯ АНАЛИТИКИ ---
+    if data == "analytics_choose_month":
+        now = datetime.now()
+        context.user_data['analytics_year'] = now.year
+        context.user_data['analytics_month'] = now.month
+        
+        # Проверяем, есть ли данные за предыдущий месяц
+        has_prev = check_month_has_data(user_id, now.year, now.month - 1)
+        
+        await safe_edit_message(
+            query,
+            "📅 *Выберите месяц для аналитики*\n\n"
+            "Используйте стрелки для навигации:",
+            reply_markup=month_navigation_keyboard(now.year, now.month, has_prev=has_prev),
+            parse_mode='Markdown'
+        )
+        return
+    
+    # --- НАВИГАЦИЯ ПО МЕСЯЦАМ: НАЗАД ---
+    if data == "month_prev":
+        year = context.user_data.get('analytics_year', datetime.now().year)
+        month = context.user_data.get('analytics_month', datetime.now().month)
+        
+        # Перемещаемся на месяц назад
+        if month == 1:
+            month = 12
+            year -= 1
+        else:
+            month -= 1
+        
+        context.user_data['analytics_year'] = year
+        context.user_data['analytics_month'] = month
+        
+        # Проверяем наличие данных за предыдущий/следующий месяц
+        has_prev = check_month_has_data(user_id, year, month - 1)
+        has_next = check_month_has_data(user_id, year, month + 1)
+        
+        await safe_edit_message(
+            query,
+            f"📅 *{['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][month-1]} {year}*\n\n"
+            "Нажмите 'Показать отчет' для просмотра статистики.",
+            reply_markup=month_navigation_keyboard(year, month, has_prev, has_next),
+            parse_mode='Markdown'
+        )
+        return
+    
+    # --- НАВИГАЦИЯ ПО МЕСЯЦАМ: ВПЕРЕД ---
+    if data == "month_next":
+        year = context.user_data.get('analytics_year', datetime.now().year)
+        month = context.user_data.get('analytics_month', datetime.now().month)
+        
+        # Проверяем, не пытаемся ли мы уйти в будущее
+        now = datetime.now()
+        if year > now.year or (year == now.year and month >= now.month):
+            await query.answer("❌ Нельзя выбрать будущий месяц")
+            return
+        
+        # Перемещаемся на месяц вперед
+        if month == 12:
+            month = 1
+            year += 1
+        else:
+            month += 1
+        
+        context.user_data['analytics_year'] = year
+        context.user_data['analytics_month'] = month
+        
+        has_prev = check_month_has_data(user_id, year, month - 1)
+        has_next = check_month_has_data(user_id, year, month + 1)
+        
+        await safe_edit_message(
+            query,
+            f"📅 *{['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][month-1]} {year}*\n\n"
+            "Нажмите 'Показать отчет' для просмотра статистики.",
+            reply_markup=month_navigation_keyboard(year, month, has_prev, has_next),
+            parse_mode='Markdown'
+        )
+        return
+    
+    # --- ПОКАЗ ОТЧЕТА ЗА ВЫБРАННЫЙ МЕСЯЦ ---
+    if data.startswith('month_show_'):
+        parts = data.split('_')
+        year = int(parts[2])
+        month = int(parts[3])
+        
+        # Получаем данные аналитики за период
+        analytics_data = get_analytics_for_month(user_id, year, month)
+        
+        # Генерируем отчет
+        report = generate_monthly_report(user_id, year, month, analytics_data)
+        
+        # Сохраняем выбранный месяц
+        context.user_data['analytics_year'] = year
+        context.user_data['analytics_month'] = month
+        
+        await safe_edit_message(
+            query,
+            report,
+            reply_markup=month_navigation_keyboard(year, month),
+            parse_mode='Markdown'
+        )
+        return
+    
+    # --- ТЕКУЩИЙ МЕСЯЦ ---
+    if data == "analytics_месяц":
+        now = datetime.now()
+        analytics_data = get_analytics(user_id, "Месяц")
+        report = generate_monthly_report(user_id, now.year, now.month, analytics_data)
+        
+        await safe_edit_message(
+            query,
+            report,
+            reply_markup=main_menu_keyboard(),
+            parse_mode='Markdown'
+        )
+        return
+    
+    # --- ТЕКУЩИЙ ГОД ---
+    if data == "analytics_год":
+        analytics_data = get_analytics(user_id, "Год")
+        report = generate_analytics_report(user_id, analytics_data, "Год")
+        
+        await safe_edit_message(
+            query,
+            report,
+            reply_markup=main_menu_keyboard(),
+            parse_mode='Markdown'
         )
         return
     
@@ -276,25 +408,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("↩️ Отмена", callback_data="back")
             ]]),
-            parse_mode='Markdown'
-        )
-        return
-    
-    # --- ВЫБОР ПЕРИОДА ДЛЯ АНАЛИТИКИ ---
-    if data.startswith('analytics_'):
-        period = data.split('_', 1)[1]
-        
-        # Получаем данные аналитики
-        analytics_data = get_analytics(user_id, period)
-        
-        # Генерация текстового отчета
-        report = generate_analytics_report(user_id, analytics_data, period)
-        
-        # Отправляем только текстовый отчет
-        await safe_edit_message(
-            query,
-            report,
-            reply_markup=main_menu_keyboard(),
             parse_mode='Markdown'
         )
         return

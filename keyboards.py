@@ -1,6 +1,7 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from config import ANALYTICS_PERIODS
 from database import get_categories
+from datetime import datetime, timedelta
 
 def main_menu_keyboard():
     """Главное меню (компактная версия с ❓ в строке)"""
@@ -11,16 +12,15 @@ def main_menu_keyboard():
          InlineKeyboardButton("📊 Аналитика", callback_data="analytics")],
         [InlineKeyboardButton("📋 Мои транзакции", callback_data="transactions"), 
          InlineKeyboardButton("💳 Баланс", callback_data="balance"),
-         InlineKeyboardButton("ℹ️", callback_data="help")]  # <-- Третья кнопка в строке!
+         InlineKeyboardButton("❓", callback_data="help")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 def categories_keyboard(categories, action_type):
-    """Клавиатура с категориями (с эмодзи)"""
+    """Клавиатура с категориями"""
     keyboard = []
     row = []
     for i, category in enumerate(categories):
-        # Категории уже содержат эмодзи из categories.py
         row.append(InlineKeyboardButton(category, callback_data=f"{action_type}_{category}"))
         if len(row) == 2:
             keyboard.append(row)
@@ -34,9 +34,36 @@ def categories_keyboard(categories, action_type):
 def analytics_keyboard():
     """Клавиатура для выбора периода аналитики"""
     keyboard = [
-        [InlineKeyboardButton("📅 Месяц", callback_data="analytics_Месяц")],
-        [InlineKeyboardButton("📆 Год", callback_data="analytics_Год")],
+        [InlineKeyboardButton("📅 Текущий месяц", callback_data="analytics_месяц")],
+        [InlineKeyboardButton("📆 Текущий год", callback_data="analytics_год")],
+        [InlineKeyboardButton("📅 Выбрать месяц", callback_data="analytics_choose_month")],
         [InlineKeyboardButton("↩️ Назад", callback_data="back")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def month_navigation_keyboard(year: int, month: int, has_prev: bool = True, has_next: bool = True):
+    """
+    Клавиатура для навигации по месяцам
+    
+    Args:
+        year: год
+        month: месяц (1-12)
+        has_prev: есть ли данные за предыдущий месяц
+        has_next: есть ли данные за следующий месяц
+    """
+    month_names = [
+        "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+        "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
+    ]
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("◀️", callback_data=f"month_prev") if has_prev else InlineKeyboardButton(" ", callback_data="noop"),
+            InlineKeyboardButton(f"{month_names[month-1]} {year}", callback_data="noop"),
+            InlineKeyboardButton("▶️", callback_data=f"month_next") if has_next else InlineKeyboardButton(" ", callback_data="noop")
+        ],
+        [InlineKeyboardButton("📊 Показать отчет", callback_data=f"month_show_{year}_{month:02d}")],
+        [InlineKeyboardButton("↩️ Назад", callback_data="analytics")]
     ]
     return InlineKeyboardMarkup(keyboard)
 
