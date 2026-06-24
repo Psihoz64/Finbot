@@ -87,19 +87,19 @@ def init_categories():
 
 
 def get_categories(category_type: str = None) -> List[str]:
-    """Получение списка категорий из БД"""
+    """Получение списка категорий из БД (в порядке добавления)"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
         if category_type:
             cursor.execute(
-                "SELECT name FROM categories WHERE type = ? AND is_active = 1 ORDER BY name",
+                "SELECT name FROM categories WHERE type = ? AND is_active = 1 ORDER BY id",
                 (category_type,)
             )
             return [row['name'] for row in cursor.fetchall()]
         else:
             cursor.execute(
-                "SELECT name, type FROM categories WHERE is_active = 1 ORDER BY type, name"
+                "SELECT name, type FROM categories WHERE is_active = 1 ORDER BY type, id"
             )
             return [dict(row) for row in cursor.fetchall()]
 
