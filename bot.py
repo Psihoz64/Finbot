@@ -208,21 +208,64 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
+    # --- ТРАНЗАКЦИИ ---
+    if data == "transactions":
+        transactions = get_transactions(user_id, limit=10)
+        if not transactions:
+            await safe_edit_message(
+                query,
+                "📋 У вас пока нет транзакций.",
+                reply_markup=main_menu_keyboard()
+            )
+            return
+        
+        text = "📋 *Последние 10 транзакций:*\n\n"
+        for t in transactions[:10]:
+            type_icon = "💰" if t['type'] == 'income' else "💸" if t['type'] == 'expense' else "🏦"
+            desc = f" ({t['description']})" if t['description'] else ""
+            date = datetime.fromisoformat(t['date']).strftime('%d.%m.%Y %H:%M')
+            text += f"{type_icon} {t['category']}: {t['amount']:.2f} руб.{desc}\n"
+            text += f"   📅 {date}\n"
+        
+        await safe_edit_message(
+            query,
+            text,
+            reply_markup=main_menu_keyboard(),
+            parse_mode='Markdown'
+        )
+        return
+    
+    # --- ПОМОЩЬ ---
+    if data == "help":
+        await safe_edit_message(
+            query,
+            "ℹ️ *Помощь по боту*\n\n"
+            "Я помогаю вести учет финансов.\n\n"
+            "💰 *Доходы* - добавляйте доходы по категориям\n"
+            "💸 *Расходы* - добавляйте расходы по категориям\n"
+            "🏦 *Накопления* - пополняйте и снимайте накопления\n"
+            "📊 *Аналитика* - смотрите статистику за период\n"
+            "📋 *Транзакции* - просмотр последних операций\n"
+            "💳 *Баланс* - детальный баланс всех операций\n\n"
+            "Просто нажимай кнопки и следуй инструкциям!",
+            reply_markup=main_menu_keyboard(),
+            parse_mode='Markdown'
+        )
+        return
+    
     # --- ВЫБОР МЕСЯЦА ДЛЯ АНАЛИТИКИ ---
     if data == "analytics_choose_month":
-      now = datetime.now()
-    context.user_data['analytics_year'] = now.year
-    context.user_data['analytics_month'] = now.month
-    
-    await safe_edit_message(
-        query,
-        "📅 *Выберите месяц для аналитики*\n\n"
-        "Используйте стрелки для навигации:",
-        reply_markup=month_navigation_keyboard(now.year, now.month, has_prev=True),
-        parse_mode='Markdown'
-    )
-    return
-
+        context.user_data['analytics_year'] = now.year
+        context.user_data['analytics_month'] = now.month
+        
+        await safe_edit_message(
+            query,
+            "📅 *Выберите месяц для аналитики*\n\n"
+            "Используйте стрелки для навигации:",
+            reply_markup=month_navigation_keyboard(now.year, now.month, has_prev=True),
+            parse_mode='Markdown'
+        )
+        return
     
     # --- НАВИГАЦИЯ ПО МЕСЯЦАМ: НАЗАД ---
     if data == "month_prev":
@@ -258,7 +301,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         month = context.user_data.get('analytics_month', datetime.now().month)
         
         # Проверяем, не пытаемся ли мы уйти в будущее
-        now = datetime.now()
         if year > now.year or (year == now.year and month >= now.month):
             await query.answer("❌ Нельзя выбрать будущий месяц")
             return
@@ -311,7 +353,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # --- ТЕКУЩИЙ МЕСЯЦ ---
     if data == "analytics_месяц":
-        now = datetime.now()
         analytics_data = get_analytics(user_id, "Месяц")
         report = generate_monthly_report(user_id, now.year, now.month, analytics_data)
         
@@ -325,57 +366,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # --- ТЕКУЩИЙ ГОД ---
     if data == "analytics_год":
-     now = datetime.now()  
-     report = generate_analytics_report(user_id, analytics_data, "Год")
+        analytics_data = get_analytics(user_id, "Год")
+        report = generate_analytics_report(user_id, analytics_data, "Год")
         
-    await safe_edit_message(
+        await safe_edit_message(
             query,
             report,
-            reply_markup=main_menu_keyboard(),
-            parse_mode='Markdown'
-        )
-    return
-    
-    # --- ТРАНЗАКЦИИ ---
-    if data == "transactions":
-        transactions = get_transactions(user_id, limit=10)
-        if not transactions:
-            await safe_edit_message(
-                query,
-                "📋 У вас пока нет транзакций.",
-                reply_markup=main_menu_keyboard()
-            )
-            return
-        
-        text = "📋 *Последние 10 транзакций:*\n\n"
-        for t in transactions[:10]:
-            type_icon = "💰" if t['type'] == 'income' else "💸" if t['type'] == 'expense' else "🏦"
-            desc = f" ({t['description']})" if t['description'] else ""
-            date = datetime.fromisoformat(t['date']).strftime('%d.%m.%Y %H:%M')
-            text += f"{type_icon} {t['category']}: {t['amount']:.2f} руб.{desc}\n"
-            text += f"   📅 {date}\n"
-        
-        await safe_edit_message(
-            query,
-            text,
-            reply_markup=main_menu_keyboard(),
-            parse_mode='Markdown'
-        )
-        return
-    
-    # --- ПОМОЩЬ ---
-    if data == "help":
-        await safe_edit_message(
-            query,
-            "ℹ️ *Помощь по боту*\n\n"
-            "Я помогаю вести учет финансов.\n\n"
-            "💰 *Доходы* - добавляйте доходы по категориям\n"
-            "💸 *Расходы* - добавляйте расходы по категориям\n"
-            "🏦 *Накопления* - пополняйте и снимайте накопления\n"
-            "📊 *Аналитика* - смотрите статистику за период\n"
-            "📋 *Транзакции* - просмотр последних операций\n"
-            "💳 *Баланс* - детальный баланс всех операций\n\n"
-            "Просто нажимай кнопки и следуй инструкциям!",
             reply_markup=main_menu_keyboard(),
             parse_mode='Markdown'
         )
