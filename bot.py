@@ -82,6 +82,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     data = query.data
     user_id = query.from_user.id
+    now = datetime.now() 
     
     # Возврат в главное меню
     if data == "back":
