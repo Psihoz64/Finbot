@@ -14,6 +14,7 @@ from keyboards import (main_menu_keyboard, categories_keyboard,
 from analytics import generate_analytics_report
 from monitor import BotMonitor  # <--- НОВЫЙ ИМПОРТ
 from config import config  # <--- НОВЫЙ ИМПОРТ для настроек
+from telegram.error import BadRequest
 
 # Настройка логирования
 logging.basicConfig(
@@ -54,18 +55,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
+async def safe_edit_message(query, text, reply_markup=None, parse_mode='Markdown'):
+    """
+    Безопасное редактирование сообщения с игнорированием ошибки 'Message is not modified'
+    """
+    try:
+        await query.message.edit_text(
+            text,
+            reply_markup=reply_markup,
+            parse_mode=parse_mode
+        )
+    except BadRequest as e:
+        if "Message is not modified" in str(e):
+            await query.answer("✅ Данные актуальны")
+        else:
+            raise e
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик нажатий на кнопки"""
     query = update.callback_query
-    
-    # Обрабатываем ошибку устаревшего запроса
-    try:
-        await query.answer()
-    except Exception as e:
-        if "Query is too old" in str(e) or "query id is invalid" in str(e):
-            # Просто игнорируем устаревшие запросы
-            return
-        raise e
+    await query.answer()
     
     data = query.data
     user_id = query.from_user.id
@@ -73,20 +82,20 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Возврат в главное меню
     if data == "back":
         balance_data = get_total_balance(user_id)
-        await query.message.edit_text(
+        await safe_edit_message(
+            query,
             f"📋 *Главное меню*\n\n"
             f"💰 Баланс: {balance_data['current_balance']:.2f} руб.\n"
             f"🏦 Накопления: {balance_data['savings_balance']:.2f} руб.",
-            reply_markup=main_menu_keyboard(),
-            parse_mode='Markdown'
+            reply_markup=main_menu_keyboard()
         )
         return
     
     # --- БАЛАНС ---
     if data == "balance":
         balance_data = get_total_balance(user_id)
-        
-        await query.message.edit_text(
+        await safe_edit_message(
+            query,
             f"💳 *Финансовый баланс*\n\n"
             f"💰 *Общий баланс:* {balance_data['current_balance']:,.2f} руб.\n"
             f"├ Доходы всего: +{balance_data['total_income']:,.2f} руб.\n"
@@ -94,8 +103,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"├ Вложено в накопления: -{balance_data['total_saved']:,.2f} руб.\n"
             f"└ Снято с накоплений: +{balance_data['total_withdrawn']:,.2f} руб.\n\n"
             f"🏦 *Накопительный счет:* {balance_data['savings_balance']:,.2f} руб.",
-            reply_markup=main_menu_keyboard(),
-            parse_mode='Markdown'
+            reply_markup=main_menu_keyboard()
         )
         return
     
@@ -103,7 +111,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "income":
         context.user_data['action'] = 'income'
         income_categories = get_categories('income')
-        await query.message.edit_text(
+        await safe_edit_message(
+            query,
             "💰 Выберите категорию дохода:",
             reply_markup=categories_keyboard(income_categories, 'income')
         )
@@ -113,7 +122,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "expense":
         context.user_data['action'] = 'expense'
         expense_categories = get_categories('expense')
-        await query.message.edit_text(
+        await safe_edit_message(
+            query,
             "💸 Выберите категорию расхода:",
             reply_markup=categories_keyboard(expense_categories, 'expense')
         )
@@ -122,7 +132,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- НАКОПЛЕНИЯ ---
     if data == "saving":
         balance = get_savings_balance(user_id)
-        await query.message.edit_text(
+        await safe_edit_message(
+            query,
             f"🏦 *Управление накоплениями*\n\n"
             f"Текущий баланс: *{balance:.2f} руб.*\n\n"
             "Выберите действие:",
@@ -132,7 +143,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     if data == "saving_add":
-        await query.message.edit_text(
+        await safe_edit_message(
+            query,
             "💰 Введите сумму пополнения накоплений (в рублях):\n\n"
             "Пример: 5000 или 10000.50\n\n"
             "❗ Описание не требуется.\n"
@@ -147,13 +159,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "saving_withdraw":
         balance = get_savings_balance(user_id)
         if balance <= 0:
-            await query.message.edit_text(
+            await safe_edit_message(
+                query,
                 "❌ У вас нет накоплений для снятия.",
                 reply_markup=main_menu_keyboard()
             )
             return
         
-        await query.message.edit_text(
+        await safe_edit_message(
+            query,
             f"💸 Введите сумму снятия с накоплений (в рублях):\n"
             f"Доступно: *{balance:.2f} руб.*\n\n"
             "Пример: 3000 или 1500.75\n\n"
@@ -169,7 +183,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if data == "saving_balance":
         balance = get_savings_balance(user_id)
-        await query.message.edit_text(
+        await safe_edit_message(
+            query,
             f"🏦 *Баланс накоплений*\n\n"
             f"Текущий баланс: *{balance:.2f} руб.*",
             reply_markup=main_menu_keyboard(),
@@ -179,7 +194,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # --- АНАЛИТИКА ---
     if data == "analytics":
-        await query.message.edit_text(
+        await safe_edit_message(
+            query,
             "📊 Выберите период для аналитики:",
             reply_markup=analytics_keyboard()
         )
@@ -189,7 +205,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "transactions":
         transactions = get_transactions(user_id, limit=10)
         if not transactions:
-            await query.message.edit_text(
+            await safe_edit_message(
+                query,
                 "📋 У вас пока нет транзакций.",
                 reply_markup=main_menu_keyboard()
             )
@@ -203,7 +220,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"{type_icon} {t['category']}: {t['amount']:.2f} руб.{desc}\n"
             text += f"   📅 {date}\n"
         
-        await query.message.edit_text(
+        await safe_edit_message(
+            query,
             text,
             reply_markup=main_menu_keyboard(),
             parse_mode='Markdown'
@@ -212,7 +230,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # --- ПОМОЩЬ ---
     if data == "help":
-        await query.message.edit_text(
+        await safe_edit_message(
+            query,
             "ℹ️ *Помощь по боту*\n\n"
             "Я помогаю вести учет финансов.\n\n"
             "💰 *Доходы* - добавляйте доходы по категориям\n"
@@ -231,7 +250,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith('income_'):
         category = data.split('_', 1)[1]
         context.user_data['income_category'] = category
-        await query.message.edit_text(
+        await safe_edit_message(
+            query,
             f"💰 *Доход: {category}*\n\n"
             "Введите сумму и описание через пробел:\n"
             "Пример: 50000 Зарплата за июнь\n"
@@ -247,7 +267,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith('expense_'):
         category = data.split('_', 1)[1]
         context.user_data['expense_category'] = category
-        await query.message.edit_text(
+        await safe_edit_message(
+            query,
             f"💸 *Расход: {category}*\n\n"
             "Введите сумму и описание через пробел:\n"
             "Пример: 1500 Продукты в Ашане\n"
@@ -270,7 +291,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report = generate_analytics_report(user_id, analytics_data, period)
         
         # Отправляем только текстовый отчет
-        await query.message.edit_text(
+        await safe_edit_message(
+            query,
             report,
             reply_markup=main_menu_keyboard(),
             parse_mode='Markdown'
@@ -278,7 +300,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     # --- ЕСЛИ НИ ОДНО УСЛОВИЕ НЕ СРАБОТАЛО ---
-    await query.message.edit_text(
+    await safe_edit_message(
+        query,
         "❌ Неизвестная команда. Используйте кнопки меню.",
         reply_markup=main_menu_keyboard()
     )
