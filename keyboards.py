@@ -3,15 +3,15 @@ from config import ANALYTICS_PERIODS
 from database import get_categories
 
 def main_menu_keyboard():
-    """Главное меню """
+    """Главное меню (компактная версия с ❓ в строке)"""
     keyboard = [
         [InlineKeyboardButton("💰 Доходы", callback_data="income"), 
-         InlineKeyboardButton("💸 Расходы", callback_data="expense")],  
+         InlineKeyboardButton("💸 Расходы", callback_data="expense")],
         [InlineKeyboardButton("🏦 Накопления", callback_data="saving"), 
          InlineKeyboardButton("📊 Аналитика", callback_data="analytics")],
         [InlineKeyboardButton("📋 Мои транзакции", callback_data="transactions"), 
-         InlineKeyboardButton("💳 Баланс", callback_data="balance")],
-        [InlineKeyboardButton("ℹ️ Помощь", callback_data="help")]  
+         InlineKeyboardButton("💳 Баланс", callback_data="balance"),
+         InlineKeyboardButton("❓", callback_data="help")]  # <-- Третья кнопка в строке!
     ]
     return InlineKeyboardMarkup(keyboard)
 
