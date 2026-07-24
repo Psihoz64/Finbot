@@ -38,7 +38,7 @@ async def handle_month_select(query, context: ContextTypes.DEFAULT_TYPE):
         parts = data.split('_')
         if len(parts) != 4 or parts[0] != "month" or parts[1] != "select":
             logger.warning(f"[handle_month_select] Неверный формат: {data}")
-            await safe_edit_message(query, "⚠️ Неверная команда.", reply_markup=main_menu_keyboard())
+            await safe_edit_message(query, "⚠️ Неверная команда", reply_markup=main_menu_keyboard())
             return True  # ← ВЕРНУЛИ TRUE, т.к. уже показали сообщение
 
         year = int(parts[2])

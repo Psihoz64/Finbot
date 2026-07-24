@@ -19,7 +19,7 @@ async def handle_transactions(query, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    text = "📋 *Последние 10 транзакций:*\n\n"
+    text = "📋 *Последние 10 транзакций*\n\n"
     for t in transactions[:10]:
         icon = "💰" if t['type'] == 'income' else "💸" if t['type'] == 'expense' else "🏦"
         desc = f" ({t['description']})" if t['description'] else ""
