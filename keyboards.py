@@ -11,7 +11,8 @@ def main_menu_keyboard():
         [InlineKeyboardButton("🏦 Накопления", callback_data="saving"), 
          InlineKeyboardButton("📊 Аналитика", callback_data="analytics")],
         [InlineKeyboardButton("📋 Транзакции", callback_data="transactions"), 
-         InlineKeyboardButton("💳 Баланс", callback_data="balance"),
+         InlineKeyboardButton("💳 Баланс", callback_data="balance")],
+        [InlineKeyboardButton("💱 Курсы валют", callback_data="currency_rates"),  # ← НОВАЯ
          InlineKeyboardButton("ℹ️", callback_data="help")]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -42,7 +43,6 @@ def analytics_keyboard():
     return InlineKeyboardMarkup(keyboard)
 
 def month_navigation_keyboard(year: int, month: int, has_prev: bool = True):
-    """Клавиатура для навигации по месяцам"""
     month_names = [
         "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
         "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"
@@ -51,14 +51,13 @@ def month_navigation_keyboard(year: int, month: int, has_prev: bool = True):
     keyboard = [
         [
             InlineKeyboardButton("◀️", callback_data="month_prev") if has_prev else InlineKeyboardButton(" ", callback_data="noop"),
-            InlineKeyboardButton(f"{month_names[month-1]} {year}", callback_data="noop"),
+            InlineKeyboardButton(f"{month_names[month-1]} {year}", callback_data=f"month_select_{year}_{month}"),  # ← ИЗМЕНИЛОСЬ
             InlineKeyboardButton("▶️", callback_data="month_next")
         ],
-        [InlineKeyboardButton("📊 Показать отчет", callback_data=f"month_show_{year}_{month:02d}")],
+    
         [InlineKeyboardButton("↩️ Назад", callback_data="analytics")]
     ]
     return InlineKeyboardMarkup(keyboard)
-
 def saving_actions_keyboard():
     """Клавиатура для действий с накоплениями"""
     keyboard = [

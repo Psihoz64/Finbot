@@ -1,4 +1,12 @@
 # bot.py - ПОЛНАЯ ВЕРСИЯ С МОНИТОРИНГОМ
+
+from handlers.utils import safe_edit_message
+from handlers.main import handle_main_button
+from handlers.categories import handle_category_selection
+from handlers.saving import handle_saving_button
+from handlers.analytics import handle_analytics_button
+from handlers.transactions import handle_transactions_button
+from handlers.currency import handle_currency_rates, handle_currency_refresh
 import logging
 import asyncio
 from datetime import datetime
@@ -15,17 +23,18 @@ from keyboards import (
     main_menu_keyboard, categories_keyboard,
     analytics_keyboard, saving_actions_keyboard,
     month_navigation_keyboard)
-from analytics import generate_analytics_report, generate_monthly_report
+from report_generator import generate_analytics_report, generate_monthly_report
 from monitor import BotMonitor  # <--- НОВЫЙ ИМПОРТ
 from config import config  # <--- НОВЫЙ ИМПОРТ для настроек
 from telegram.error import BadRequest
 
-# Настройка логирования
+# Логигирование
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=getattr(logging, config.LOG_LEVEL)  # <--- ИЗМЕНЕНО: берем из config
+    level=logging.INFO
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)  # ← ДОБАВИТЬ ЭТУ СТРОКУ
+
 
 # Инициализация БД
 init_db()
@@ -59,362 +68,48 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-async def safe_edit_message(query, text, reply_markup=None, parse_mode='Markdown'):
-    """
-    Безопасное редактирование сообщения с игнорированием ошибки 'Message is not modified'
-    """
-    try:
-        await query.message.edit_text(
-            text,
-            reply_markup=reply_markup,
-            parse_mode=parse_mode
-        )
-    except BadRequest as e:
-        if "Message is not modified" in str(e):
-            await query.answer("✅ Данные актуальны")
-        else:
-            raise e
-
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик нажатий на кнопки"""
     query = update.callback_query
     await query.answer()
-    
-    data = query.data
-    user_id = query.from_user.id
-    now = datetime.now() 
-    
-    # Возврат в главное меню
-    if data == "back":
-        balance_data = get_total_balance(user_id)
-        await safe_edit_message(
-            query,
-            f"📋 *Главное меню*\n\n"
-            f"💰 Баланс: {balance_data['current_balance']:.2f} руб.\n"
-            f"🏦 Накопления: {balance_data['savings_balance']:.2f} руб.",
-            reply_markup=main_menu_keyboard()
-        )
-        return
-    
-    # --- БАЛАНС ---
-    if data == "balance":
-        balance_data = get_total_balance(user_id)
-        await safe_edit_message(
-            query,
-            f"💳 *Финансовый баланс*\n\n"
-            f"💰 *Общий баланс:* {balance_data['current_balance']:,.2f} руб.\n"
-            f"├ Доходы всего: +{balance_data['total_income']:,.2f} руб.\n"
-            f"├ Расходы всего: -{balance_data['total_expense']:,.2f} руб.\n"
-            f"├ Вложено в накопления: -{balance_data['total_saved']:,.2f} руб.\n"
-            f"└ Снято с накоплений: +{balance_data['total_withdrawn']:,.2f} руб.\n\n"
-            f"🏦 *Накопительный счет:* {balance_data['savings_balance']:,.2f} руб.",
-            reply_markup=main_menu_keyboard()
-        )
-        return
-    
-    # --- ДОХОДЫ ---
-    if data == "income":
-        context.user_data['action'] = 'income'
-        income_categories = get_categories('income')
-        await safe_edit_message(
-            query,
-            "💰 Выберите категорию дохода:",
-            reply_markup=categories_keyboard(income_categories, 'income')
-        )
-        return
-    
-    # --- РАСХОДЫ ---
-    if data == "expense":
-        context.user_data['action'] = 'expense'
-        expense_categories = get_categories('expense')
-        await safe_edit_message(
-            query,
-            "💸 Выберите категорию расхода:",
-            reply_markup=categories_keyboard(expense_categories, 'expense')
-        )
-        return
-    
-    # --- НАКОПЛЕНИЯ ---
-    if data == "saving":
-        balance = get_savings_balance(user_id)
-        await safe_edit_message(
-            query,
-            f"🏦 *Управление накоплениями*\n\n"
-            f"Текущий баланс: *{balance:.2f} руб.*\n\n"
-            "Выберите действие:",
-            reply_markup=saving_actions_keyboard(),
-            parse_mode='Markdown'
-        )
-        return
-    
-    if data == "saving_add":
-        await safe_edit_message(
-            query,
-            "💰 Введите сумму пополнения накоплений (в рублях):\n\n"
-            "Пример: 5000 или 10000.50\n\n"
-            "❗ Описание не требуется.\n"
-            "💡 Эти деньги будут списаны с основного баланса.",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("↩️ Отмена", callback_data="back")
-            ]])
-        )
-        context.user_data['saving_action'] = 'add'
-        return
-    
-    if data == "saving_withdraw":
-        balance = get_savings_balance(user_id)
-        if balance <= 0:
-            await safe_edit_message(
-                query,
-                "❌ У вас нет накоплений для снятия.",
-                reply_markup=main_menu_keyboard()
-            )
-            return
-        
-        await safe_edit_message(
-            query,
-            f"💸 Введите сумму снятия с накоплений (в рублях):\n"
-            f"Доступно: *{balance:.2f} руб.*\n\n"
-            "Пример: 3000 или 1500.75\n\n"
-            "❗ Описание не требуется.\n"
-            "💡 Эти деньги будут зачислены на основной баланс.",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("↩️ Отмена", callback_data="back")
-            ]]),
-            parse_mode='Markdown'
-        )
-        context.user_data['saving_action'] = 'withdraw'
-        return
-    
-    if data == "saving_balance":
-        balance = get_savings_balance(user_id)
-        await safe_edit_message(
-            query,
-            f"🏦 *Баланс накоплений*\n\n"
-            f"Текущий баланс: *{balance:.2f} руб.*",
-            reply_markup=main_menu_keyboard(),
-            parse_mode='Markdown'
-        )
-        return
-    
-    # --- АНАЛИТИКА ---
-    if data == "analytics":
-        await safe_edit_message(
-            query,
-            "📊 *Аналитика*\n\n"
-            "Выберите период для отчета:",
-            reply_markup=analytics_keyboard(),
-            parse_mode='Markdown'
-        )
-        return
-    
-    # --- ТРАНЗАКЦИИ ---
-    if data == "transactions":
-        transactions = get_transactions(user_id, limit=10)
-        if not transactions:
-            await safe_edit_message(
-                query,
-                "📋 У вас пока нет транзакций.",
-                reply_markup=main_menu_keyboard()
-            )
-            return
-        
-        text = "📋 *Последние 10 транзакций:*\n\n"
-        for t in transactions[:10]:
-            type_icon = "💰" if t['type'] == 'income' else "💸" if t['type'] == 'expense' else "🏦"
-            desc = f" ({t['description']})" if t['description'] else ""
-            date = datetime.fromisoformat(t['date']).strftime('%d.%m.%Y %H:%M')
-            text += f"{type_icon} {t['category']}: {t['amount']:.2f} руб.{desc}\n"
-            text += f"   📅 {date}\n"
-        
-        await safe_edit_message(
-            query,
-            text,
-            reply_markup=main_menu_keyboard(),
-            parse_mode='Markdown'
-        )
-        return
-    
-    # --- ПОМОЩЬ ---
-    if data == "help":
-        await safe_edit_message(
-            query,
-            "ℹ️ *Помощь по боту*\n\n"
-            "Я помогаю вести учет финансов.\n\n"
-            "💰 *Доходы* - добавляйте доходы по категориям\n"
-            "💸 *Расходы* - добавляйте расходы по категориям\n"
-            "🏦 *Накопления* - пополняйте и снимайте накопления\n"
-            "📊 *Аналитика* - смотрите статистику за период\n"
-            "📋 *Транзакции* - просмотр последних операций\n"
-            "💳 *Баланс* - детальный баланс всех операций\n\n"
-            "Просто нажимай кнопки и следуй инструкциям!",
-            reply_markup=main_menu_keyboard(),
-            parse_mode='Markdown'
-        )
-        return
-    
-    # --- ВЫБОР МЕСЯЦА ДЛЯ АНАЛИТИКИ ---
-    if data == "analytics_choose_month":
-        context.user_data['analytics_year'] = now.year
-        context.user_data['analytics_month'] = now.month
-        
-        await safe_edit_message(
-            query,
-            "📅 *Выберите месяц для аналитики*\n\n"
-            "Используйте стрелки для навигации:",
-            reply_markup=month_navigation_keyboard(now.year, now.month, has_prev=True),
-            parse_mode='Markdown'
-        )
-        return
-    
-    # --- НАВИГАЦИЯ ПО МЕСЯЦАМ: НАЗАД ---
-    if data == "month_prev":
-        year = context.user_data.get('analytics_year', now.year)
-        month = context.user_data.get('analytics_month', now.month)
-        
-        # Проверяем, есть ли куда двигаться
-        if month == 1:
-            # Если январь, то проверяем, есть ли данные за предыдущий год
-            has_prev_data = check_month_has_data(user_id, year - 1, 12)
-            if not has_prev_data:
-                await query.answer("❌ Нет данных за предыдущий месяц")
-                return
-            month = 12
-            year -= 1
-        else:
-            month -= 1
-        
-        context.user_data['analytics_year'] = year
-        context.user_data['analytics_month'] = month
-        
-        await safe_edit_message(
-            query,
-            f"📅 *{['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][month-1]} {year}*\n\n"
-            "Нажмите 'Показать отчет' для просмотра статистики.",
-            reply_markup=month_navigation_keyboard(year, month),
-            parse_mode='Markdown'
-        )
-        return
-    
-    # --- НАВИГАЦИЯ ПО МЕСЯЦАМ: ВПЕРЕД ---
-    if data == "month_next":
-        year = context.user_data.get('analytics_year', now.year)
-        month = context.user_data.get('analytics_month', now.month)
-        
-        # Проверяем, не пытаемся ли мы уйти в будущее
-        if year > now.year or (year == now.year and month >= now.month):
-            await query.answer("❌ Нельзя выбрать будущий месяц")
-            return
-        
-        if month == 12:
-            month = 1
-            year += 1
-        else:
-            month += 1
-        
-        context.user_data['analytics_year'] = year
-        context.user_data['analytics_month'] = month
-        
-        await safe_edit_message(
-            query,
-            f"📅 *{['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'][month-1]} {year}*\n\n"
-            "Нажмите 'Показать отчет' для просмотра статистики.",
-            reply_markup=month_navigation_keyboard(year, month),
-            parse_mode='Markdown'
-        )
-        return
 
-    
-    # --- ПОКАЗ ОТЧЕТА ЗА ВЫБРАННЫЙ МЕСЯЦ ---
-    if data.startswith('month_show_'):
-        parts = data.split('_')
-        year = int(parts[2])
-        month = int(parts[3])
-        
-        # Получаем данные аналитики за период
-        analytics_data = get_analytics_for_month(user_id, year, month)
-        
-        # Генерируем отчет
-        report = generate_monthly_report(user_id, year, month, analytics_data)
-        
-        # Сохраняем выбранный месяц
-        context.user_data['analytics_year'] = year
-        context.user_data['analytics_month'] = month
-        
+    data = query.data
+    handled = False
+
+    # 1️⃣ Категории (income, expense)
+    if data.startswith(('income_', 'expense_')):
+        await handle_category_selection(query, context)
+        handled = True
+
+    # 2️⃣ Основные кнопки (income, expense, back, balance, help, analytics)
+    if not handled:
+        handled = await handle_main_button(query, context)
+
+    # 3️⃣ Накопления
+    if not handled:
+        handled = await handle_saving_button(query, context)
+
+    # 4️⃣ Транзакции
+    if not handled:
+        handled = await handle_transactions_button(query, context)
+
+    # 5️⃣ Аналитика
+    if not handled:
+        handled = await handle_analytics_button(query, context)
+
+    # 6️⃣ Курсы валют
+    if not handled:
+        if data == "currency_rates":
+            handled = await handle_currency_rates(query, context)
+        elif data == "currency_refresh":
+            handled = await handle_currency_refresh(query, context)
+
+    # 🔒 Fallback
+    if not handled:
         await safe_edit_message(
             query,
-            report,
-            reply_markup=month_navigation_keyboard(year, month),
-            parse_mode='Markdown'
+            "❌ Неизвестная команда. Используйте кнопки меню.",
+            reply_markup=main_menu_keyboard()
         )
-        return
-    
-    # --- ТЕКУЩИЙ МЕСЯЦ ---
-    if data == "analytics_месяц":
-        analytics_data = get_analytics(user_id, "Месяц")
-        report = generate_monthly_report(user_id, now.year, now.month, analytics_data)
-        
-        await safe_edit_message(
-            query,
-            report,
-            reply_markup=main_menu_keyboard(),
-            parse_mode='Markdown'
-        )
-        return
-    
-    # --- ТЕКУЩИЙ ГОД ---
-    if data == "analytics_год":
-        analytics_data = get_analytics(user_id, "Год")
-        report = generate_analytics_report(user_id, analytics_data, "Год")
-        
-        await safe_edit_message(
-            query,
-            report,
-            reply_markup=main_menu_keyboard(),
-            parse_mode='Markdown'
-        )
-        return
-    
-    # --- ВЫБОР КАТЕГОРИИ ДОХОДА ---
-    if data.startswith('income_'):
-        category = data.split('_', 1)[1]
-        context.user_data['income_category'] = category
-        await safe_edit_message(
-            query,
-            f"💰 *Доход: {category}*\n\n"
-            "Введите сумму и описание через пробел:\n"
-            "Пример: 50000 Зарплата за июнь\n"
-            "Или просто: 50000",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("↩️ Отмена", callback_data="back")
-            ]]),
-            parse_mode='Markdown'
-        )
-        return
-    
-    # --- ВЫБОР КАТЕГОРИИ РАСХОДА ---
-    if data.startswith('expense_'):
-        category = data.split('_', 1)[1]
-        context.user_data['expense_category'] = category
-        await safe_edit_message(
-            query,
-            f"💸 *Расход: {category}*\n\n"
-            "Введите сумму и описание через пробел:\n"
-            "Пример: 1500 Продукты в Ашане\n"
-            "Или просто: 1500",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("↩️ Отмена", callback_data="back")
-            ]]),
-            parse_mode='Markdown'
-        )
-        return
-    
-    # --- ЕСЛИ НИ ОДНО УСЛОВИЕ НЕ СРАБОТАЛО ---
-    await safe_edit_message(
-        query,
-        "❌ Неизвестная команда. Используйте кнопки меню.",
-        reply_markup=main_menu_keyboard()
-    )
 
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка текстового ввода (суммы транзакций)"""
