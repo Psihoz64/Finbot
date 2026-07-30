@@ -63,6 +63,23 @@ async def handle_saving_withdraw(query, context: ContextTypes.DEFAULT_TYPE):
     )
     context.user_data['saving_action'] = 'withdraw'
 
+async def handle_saving_add_direct(query, context: ContextTypes.DEFAULT_TYPE):
+    """Пополнение накоплений извне (проценты, дивиденды)"""
+    text = (
+        "📈 Введите сумму начисления на накопления:\n\n"
+        "Пример: 500 или 1500.20\n\n"
+        "❗ Описание не требуется.\n"
+        "💡 Эти деньги не списываются с вашего основного баланса."
+    )
+    await safe_edit_message(
+        query,
+        text,
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("↩️ Отмена", callback_data="back")
+        ]])
+    )
+    context.user_data['saving_action'] = 'add_direct'
+
 async def handle_saving_balance(query, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
     balance = get_savings_balance(user_id)
@@ -73,6 +90,7 @@ SAVING_HANDLERS = {
     "saving": handle_saving,
     "saving_add": handle_saving_add,
     "saving_withdraw": handle_saving_withdraw,
+    "saving_add_direct": handle_saving_add_direct,
     "saving_balance": handle_saving_balance,
 }
 

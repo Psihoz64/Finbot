@@ -61,7 +61,8 @@ def month_navigation_keyboard(year: int, month: int, has_prev: bool = True):
 def saving_actions_keyboard():
     """Клавиатура для действий с накоплениями"""
     keyboard = [
-        [InlineKeyboardButton("➕ Пополнить", callback_data="saving_add")],
+        [InlineKeyboardButton("➕ С основного", callback_data="saving_add")],
+        [InlineKeyboardButton("➕ Извне (проценты)", callback_data="saving_add_direct")],
         [InlineKeyboardButton("➖ Снять", callback_data="saving_withdraw")],
         [InlineKeyboardButton("↩️ Назад", callback_data="back")]
     ]

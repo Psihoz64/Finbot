@@ -14,11 +14,12 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (Application, CommandHandler, CallbackQueryHandler, 
                           MessageHandler, filters, ContextTypes)
 
-from config import BOT_TOKEN  # <--- ИЗМЕНЕНО: импортируем из config
+from config import BOT_TOKEN 
 from database import (
     init_db, init_categories, add_transaction, get_transactions,
     get_savings_balance, get_analytics, get_total_balance, get_categories,
-    check_month_has_data, get_analytics_for_month)
+    check_month_has_data, get_analytics_for_month, get_db_connection # <-- ДОБАВИТЬ ЭТОТ ИМПОРТ
+)
 from keyboards import (
     main_menu_keyboard, categories_keyboard,
     analytics_keyboard, saving_actions_keyboard,
@@ -43,9 +44,7 @@ init_db()
 monitor = None
 monitor_task = None
 
-# ============================================
-# ВСЕ ВАШИ СУЩЕСТВУЮЩИЕ ОБРАБОТЧИКИ ОСТАЮТСЯ БЕЗ ИЗМЕНЕНИЙ
-# ============================================
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /start"""
@@ -55,19 +54,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Получаем общий баланс
     balance_data = get_total_balance(user_id)
     
-    await update.message.reply_text(
+    text = (
         f"👋 Привет, {user.first_name}!\n\n"
-        f"💰 *Общий баланс:* {balance_data['current_balance']:.2f} руб.\n"
-        f"🏦 *Накопления:* {balance_data['savings_balance']:.2f} руб.\n\n"
-        "Я твой финансовый помощник. Я помогу тебе:\n"
-        "✅ Отслеживать доходы и расходы\n"
-        "✅ Вести учет накоплений\n"
-        "✅ Анализировать финансы\n\n"
-        "Используй кнопки меню для навигации.",
-        reply_markup=main_menu_keyboard(),
+        "Я — твой финансовый помощник.\n\n"
+        f"💰 Баланс: {balance_data['current_balance']:.2f} руб.\n"
+        f"🏦 Накопления: {balance_data['savings_balance']:.2f} руб."
+    )
+    
+    # Отправляем приветственное сообщение с кнопкой "Начать работу", которая будет вести в главное меню
+    await update.message.reply_text(
+        text,
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ В главное меню", callback_data="back") # Используем "back", так как handle_back формирует главное меню
+        ]]),
         parse_mode='Markdown'
     )
-
+    
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -121,8 +123,75 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     income_category = context.user_data.get('income_category')
     expense_category = context.user_data.get('expense_category')
     
+    # --- ОБРАБОТКА ВВОДА ДЛЯ ДОХОДОВ И РАСХОДОВ ---
+    if income_category or expense_category:
+        try:
+            amount = float(text.strip())
+            if amount <= 0:
+                await update.message.reply_text(
+                    "❌ Сумма должна быть больше 0. Попробуйте снова.",
+                    reply_markup=main_menu_keyboard()
+                )
+                return
+
+            # Определяем тип транзакции и название категории
+            if income_category:
+                tr_type = 'income'
+                category_name = income_category # <-- ИСПРАВЛЕНО: используем переменную категории
+            else:
+                tr_type = 'expense'
+                category_name = expense_category # <-- ИСПРАВЛЕНО: используем переменную категории
+
+            # Добавляем транзакцию (описание берем из текста, если пользователь ввел сумму и описание)
+            # В текущей логике категорий, пользователь вводит "Сумма Описание"
+            # Но в handlers/categories.py мы отправляем текст "Введите сумму и описание через пробел"
+            # Однако, здесь мы можем просто использовать всю строку как описание, если она не чистое число.
+            # Но проще всего: первая часть строки - сумма, остальное - описание.
+            
+            # Разбираем ввод: "1000 Зарплата" -> amount=1000, desc="Зарплата"
+            # Или "1000" -> amount=1000, desc=""
+            
+            # Уже извлекли amount из float(text), но теперь нужно пересобрать для desc
+            # Так как text.strip() был использован для float, нам нужно найти описание.
+            # Простой способ: найти первое пробел после цифры.
+            import re
+            match = re.match(r'([\d.]+)\s+(.*)', text)
+            if match:
+                description = match.group(2).strip()
+            else:
+                description = ""
+
+            add_transaction(user_id, tr_type, category_name, amount, description)
+            
+            balance_data = get_total_balance(user_id)
+            
+            if income_category:
+                await update.message.reply_text(
+                    f"✅ Доход {amount:.2f} руб. добавлен!\n"
+                    f"💰 Баланс: {balance_data['current_balance']:.2f} руб.",
+                    reply_markup=main_menu_keyboard()
+                )
+            else:
+                await update.message.reply_text(
+                    f"✅ Расход {amount:.2f} руб. добавлен!\n"
+                    f"💰 Баланс: {balance_data['current_balance']:.2f} руб.",
+                    reply_markup=main_menu_keyboard()
+                )
+            
+            # Очищаем состояние
+            context.user_data.pop('income_category', None)
+            context.user_data.pop('expense_category', None)
+
+        except ValueError:
+            await update.message.reply_text(
+                "❌ Некорректный формат. Введите сумму (число) и описание через пробел.\n"
+                "Пример: 5000 Зарплата",
+                reply_markup=main_menu_keyboard()
+            )
+        return
+
     # --- ОБРАБОТКА НАКОПЛЕНИЙ (БЕЗ ОПИСАНИЯ) ---
-    if saving_action in ['add', 'withdraw']:
+    if saving_action in ['add', 'withdraw', 'add_direct']:
         try:
             amount = float(text.strip())
             
@@ -133,9 +202,20 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
             
+            # 1. Пополнение с основного баланса
             if saving_action == 'add':
-                # Пополнение накоплений
-                add_transaction(user_id, 'saving', 'Накопления', amount, "", False)
+                total_balance_data = get_total_balance(user_id)
+                if total_balance_data['current_balance'] < amount:
+                    await update.message.reply_text(
+                        f"❌ Недостаточно средств на основном балансе. "
+                        f"Доступно: {total_balance_data['current_balance']:.2f} руб.",
+                        reply_markup=main_menu_keyboard()
+                    )
+                    return
+
+                # Создаем транзакцию: тип 'saving', without withdrawal flag
+                add_transaction(user_id, 'saving', 'Пополнение накоплений', amount, "", False)
+                
                 balance = get_savings_balance(user_id)
                 total_balance = get_total_balance(user_id)
                 
@@ -145,28 +225,54 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"💰 Общий баланс: {total_balance['current_balance']:.2f} руб.",
                     reply_markup=main_menu_keyboard()
                 )
-            else:  # withdraw
-                # Снятие с накоплений
+                
+            # 2. Пополнение извне (проценты, дивиденды) - не влияет на общий баланс напрямую через формулу
+            elif saving_action == 'add_direct':
+                with get_db_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        INSERT INTO savings_balance (user_id, balance)
+                        VALUES (?, ?)
+                        ON CONFLICT(user_id) DO UPDATE SET 
+                        balance = balance + excluded.balance
+                    ''', (user_id, amount))
+                    conn.commit()
+                
                 balance = get_savings_balance(user_id)
-                if amount > balance:
+                total_balance = get_total_balance(user_id)
+                
+                await update.message.reply_text(
+                    f"✅ На накопления начислено {amount:.2f} руб.\n"
+                    f"🏦 Баланс накоплений: {balance:.2f} руб.\n"
+                    f"💰 Основной баланс не изменился.",
+                    reply_markup=main_menu_keyboard()
+                )
+
+            # 3. Снятие с накоплений
+            else:  # withdraw
+                balance_before = get_savings_balance(user_id)
+                
+                if amount > balance_before:
                     await update.message.reply_text(
-                        f"❌ Недостаточно средств. Доступно: {balance:.2f} руб.",
+                        f"❌ Недостаточно средств. Доступно: {balance_before:.2f} руб.",
                         reply_markup=main_menu_keyboard()
                     )
                     return
                 
-                add_transaction(user_id, 'saving', 'Накопления', amount, "", True)
-                new_balance = get_savings_balance(user_id)
+                # Создаем транзакцию: тип 'saving', with withdrawal flag
+                add_transaction(user_id, 'saving', 'Снятие с накоплений', amount, "", True)
+                
+                balance_after = get_savings_balance(user_id)
                 total_balance = get_total_balance(user_id)
                 
                 await update.message.reply_text(
                     f"✅ Снято {amount:.2f} руб. с накоплений.\n"
-                    f"🏦 Баланс накоплений: {new_balance:.2f} руб.\n"
+                    f"🏦 Баланс накоплений: {balance_after:.2f} руб.\n"
                     f"💰 Общий баланс: {total_balance['current_balance']:.2f} руб.",
                     reply_markup=main_menu_keyboard()
                 )
             
-            # Очищаем состояние
+            # Очищаем состояние после успешной операции
             context.user_data.pop('saving_action', None)
             
         except ValueError:
@@ -175,99 +281,8 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Пример: 5000 или 10000",
                 reply_markup=main_menu_keyboard()
             )
+        # Важно: return здесь завершает обработку этого сообщения
         return
-    
-    # --- ОБРАБОТКА ДОХОДА ---
-    if income_category:
-        try:
-            parts = text.strip().split()
-            amount = float(parts[0])
-            description = " ".join(parts[1:]) if len(parts) > 1 else ""
-            
-            if amount <= 0:
-                await update.message.reply_text(
-                    "❌ Сумма должна быть больше 0. Попробуйте снова.",
-                    reply_markup=main_menu_keyboard()
-                )
-                return
-            
-            add_transaction(user_id, 'income', income_category, amount, description)
-            total_balance = get_total_balance(user_id)
-            
-            await update.message.reply_text(
-                f"✅ Доход добавлен:\n"
-                f"Категория: {income_category}\n"
-                f"Сумма: {amount:.2f} руб.\n"
-                f"Описание: {description if description else 'Нет'}\n\n"
-                f"💰 Общий баланс: {total_balance['current_balance']:.2f} руб.",
-                reply_markup=main_menu_keyboard()
-            )
-            
-            context.user_data.pop('income_category', None)
-            
-        except ValueError:
-            await update.message.reply_text(
-                "❌ Некорректный формат. Введите сумму и описание через пробел.\n"
-                "Пример: 50000 Зарплата за июнь\n"
-                "Или просто: 50000",
-                reply_markup=main_menu_keyboard()
-            )
-        except IndexError:
-            await update.message.reply_text(
-                "❌ Введите сумму.\n"
-                "Пример: 50000 Зарплата за июнь",
-                reply_markup=main_menu_keyboard()
-            )
-        return
-    
-    # --- ОБРАБОТКА РАСХОДА ---
-    if expense_category:
-        try:
-            parts = text.strip().split()
-            amount = float(parts[0])
-            description = " ".join(parts[1:]) if len(parts) > 1 else ""
-            
-            if amount <= 0:
-                await update.message.reply_text(
-                    "❌ Сумма должна быть больше 0. Попробуйте снова.",
-                    reply_markup=main_menu_keyboard()
-                )
-                return
-            
-            add_transaction(user_id, 'expense', expense_category, amount, description)
-            total_balance = get_total_balance(user_id)
-            
-            await update.message.reply_text(
-                f"✅ Расход добавлен:\n"
-                f"Категория: {expense_category}\n"
-                f"Сумма: {amount:.2f} руб.\n"
-                f"Описание: {description if description else 'Нет'}\n\n"
-                f"💰 Общий баланс: {total_balance['current_balance']:.2f} руб.",
-                reply_markup=main_menu_keyboard()
-            )
-            
-            context.user_data.pop('expense_category', None)
-            
-        except ValueError:
-            await update.message.reply_text(
-                "❌ Некорректный формат. Введите сумму и описание через пробел.\n"
-                "Пример: 1500 Продукты в Ашане\n"
-                "Или просто: 1500",
-                reply_markup=main_menu_keyboard()
-            )
-        except IndexError:
-            await update.message.reply_text(
-                "❌ Введите сумму.\n"
-                "Пример: 1500 Продукты в Ашане",
-                reply_markup=main_menu_keyboard()
-            )
-        return
-    
-    # Если нет активного состояния
-    await update.message.reply_text(
-        "ℹ️ Используйте кнопки меню для взаимодействия.",
-        reply_markup=main_menu_keyboard()
-    )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /help"""
