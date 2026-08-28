@@ -1,4 +1,4 @@
-# bot.py - ПОЛНАЯ ВЕРСИЯ С МОНИТОРИНГОМ
+# bot.py - ПОЛНАЯ ВЕРСИЯ С МОНИТОРИНГОМ И УЛУЧШЕННОЙ СЕТЬЮ
 
 from handlers.utils import safe_edit_message
 from handlers.main import handle_main_button
@@ -13,37 +13,37 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (Application, CommandHandler, CallbackQueryHandler, 
                           MessageHandler, filters, ContextTypes)
+from telegram.request import HTTPXRequest
+from telegram.ext import AIORateLimiter
+from telegram.error import NetworkError, TimedOut
 
 from config import BOT_TOKEN 
 from database import (
     init_db, init_categories, add_transaction, get_transactions,
     get_savings_balance, get_analytics, get_total_balance, get_categories,
-    check_month_has_data, get_analytics_for_month, get_db_connection # <-- ДОБАВИТЬ ЭТОТ ИМПОРТ
+    check_month_has_data, get_analytics_for_month, get_db_connection
 )
 from keyboards import (
     main_menu_keyboard, categories_keyboard,
     analytics_keyboard, saving_actions_keyboard,
     month_navigation_keyboard)
 from report_generator import generate_analytics_report, generate_monthly_report
-from monitor import BotMonitor  # <--- НОВЫЙ ИМПОРТ
-from config import config  # <--- НОВЫЙ ИМПОРТ для настроек
-from telegram.error import BadRequest
+from monitor import BotMonitor
+from config import config
 
-# Логигирование
+# Логирование
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
-logger = logging.getLogger(__name__)  # ← ДОБАВИТЬ ЭТУ СТРОКУ
-
+logger = logging.getLogger(__name__)
 
 # Инициализация БД
 init_db()
 
-# === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ МОНИТОРИНГА (НОВЫЕ) ===
+# === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ МОНИТОРИНГА ===
 monitor = None
 monitor_task = None
-
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -51,7 +51,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = user.id
     
-    # Получаем общий баланс
     balance_data = get_total_balance(user_id)
     
     text = (
@@ -61,15 +60,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🏦 Накопления: {balance_data['savings_balance']:.2f} руб."
     )
     
-    # Отправляем приветственное сообщение с кнопкой "Начать работу", которая будет вести в главное меню
     await update.message.reply_text(
         text,
         reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("✅ В главное меню", callback_data="back") # Используем "back", так как handle_back формирует главное меню
+            InlineKeyboardButton("✅ В главное меню", callback_data="back")
         ]]),
         parse_mode='Markdown'
     )
     
+
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -77,35 +76,28 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     handled = False
 
-    # 1️⃣ Категории (income, expense)
     if data.startswith(('income_', 'expense_')):
         await handle_category_selection(query, context)
         handled = True
 
-    # 2️⃣ Основные кнопки (income, expense, back, balance, help, analytics)
     if not handled:
         handled = await handle_main_button(query, context)
 
-    # 3️⃣ Накопления
     if not handled:
         handled = await handle_saving_button(query, context)
 
-    # 4️⃣ Транзакции
     if not handled:
         handled = await handle_transactions_button(query, context)
 
-    # 5️⃣ Аналитика
     if not handled:
         handled = await handle_analytics_button(query, context)
 
-    # 6️⃣ Курсы валют
     if not handled:
         if data == "currency_rates":
             handled = await handle_currency_rates(query, context)
         elif data == "currency_refresh":
             handled = await handle_currency_refresh(query, context)
 
-    # 🔒 Fallback
     if not handled:
         await safe_edit_message(
             query,
@@ -113,12 +105,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_menu_keyboard()
         )
 
+
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработка текстового ввода (суммы транзакций)"""
     user_id = update.effective_user.id
     text = update.message.text
     
-    # Проверяем, есть ли ожидание ввода суммы
     saving_action = context.user_data.get('saving_action')
     income_category = context.user_data.get('income_category')
     expense_category = context.user_data.get('expense_category')
@@ -134,26 +126,13 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
 
-            # Определяем тип транзакции и название категории
             if income_category:
                 tr_type = 'income'
-                category_name = income_category # <-- ИСПРАВЛЕНО: используем переменную категории
+                category_name = income_category
             else:
                 tr_type = 'expense'
-                category_name = expense_category # <-- ИСПРАВЛЕНО: используем переменную категории
+                category_name = expense_category
 
-            # Добавляем транзакцию (описание берем из текста, если пользователь ввел сумму и описание)
-            # В текущей логике категорий, пользователь вводит "Сумма Описание"
-            # Но в handlers/categories.py мы отправляем текст "Введите сумму и описание через пробел"
-            # Однако, здесь мы можем просто использовать всю строку как описание, если она не чистое число.
-            # Но проще всего: первая часть строки - сумма, остальное - описание.
-            
-            # Разбираем ввод: "1000 Зарплата" -> amount=1000, desc="Зарплата"
-            # Или "1000" -> amount=1000, desc=""
-            
-            # Уже извлекли amount из float(text), но теперь нужно пересобрать для desc
-            # Так как text.strip() был использован для float, нам нужно найти описание.
-            # Простой способ: найти первое пробел после цифры.
             import re
             match = re.match(r'([\d.]+)\s+(.*)', text)
             if match:
@@ -178,7 +157,6 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=main_menu_keyboard()
                 )
             
-            # Очищаем состояние
             context.user_data.pop('income_category', None)
             context.user_data.pop('expense_category', None)
 
@@ -190,7 +168,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         return
 
-    # --- ОБРАБОТКА НАКОПЛЕНИЙ (БЕЗ ОПИСАНИЯ) ---
+    # --- ОБРАБОТКА НАКОПЛЕНИЙ ---
     if saving_action in ['add', 'withdraw', 'add_direct']:
         try:
             amount = float(text.strip())
@@ -202,7 +180,6 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
             
-            # 1. Пополнение с основного баланса
             if saving_action == 'add':
                 total_balance_data = get_total_balance(user_id)
                 if total_balance_data['current_balance'] < amount:
@@ -213,7 +190,6 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     return
 
-                # Создаем транзакцию: тип 'saving', without withdrawal flag
                 add_transaction(user_id, 'saving', 'Пополнение накоплений', amount, "", False)
                 
                 balance = get_savings_balance(user_id)
@@ -226,7 +202,6 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=main_menu_keyboard()
                 )
                 
-            # 2. Пополнение извне (проценты, дивиденды) - не влияет на общий баланс напрямую через формулу
             elif saving_action == 'add_direct':
                 with get_db_connection() as conn:
                     cursor = conn.cursor()
@@ -248,7 +223,6 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=main_menu_keyboard()
                 )
 
-            # 3. Снятие с накоплений
             else:  # withdraw
                 balance_before = get_savings_balance(user_id)
                 
@@ -259,7 +233,6 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     return
                 
-                # Создаем транзакцию: тип 'saving', with withdrawal flag
                 add_transaction(user_id, 'saving', 'Снятие с накоплений', amount, "", True)
                 
                 balance_after = get_savings_balance(user_id)
@@ -272,7 +245,6 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     reply_markup=main_menu_keyboard()
                 )
             
-            # Очищаем состояние после успешной операции
             context.user_data.pop('saving_action', None)
             
         except ValueError:
@@ -281,8 +253,8 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Пример: 5000 или 10000",
                 reply_markup=main_menu_keyboard()
             )
-        # Важно: return здесь завершает обработку этого сообщения
         return
+
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обработчик команды /help"""
@@ -303,6 +275,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_menu_keyboard()
     )
 
+
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Отмена текущего действия"""
     context.user_data.clear()
@@ -311,9 +284,6 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_menu_keyboard()
     )
 
-# ============================================
-# НОВЫЕ ОБРАБОТЧИКИ ДЛЯ МОНИТОРИНГА
-# ============================================
 
 async def healthcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Команда для проверки состояния бота (только для админов)"""
@@ -335,7 +305,6 @@ async def healthcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if monitor.last_ping:
         last_ping_text = monitor.last_ping.strftime('%d.%m.%Y %H:%M:%S')
     
-    # Проверяем статус мониторинга
     monitor_status = "🟢 Активен" if monitor_task and not monitor_task.done() else "🔴 Остановлен"
     
     await update.message.reply_text(
@@ -349,24 +318,36 @@ async def healthcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Глобальный обработчик ошибок"""
-    logger.error(f"Ошибка: {context.error}")
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    """Глобальный обработчик ошибок с фильтрацией сетевых сбоев"""
+    error = context.error
     
-    # Уведомляем админов о критической ошибке
+    # 1. Игнорируем стандартные сетевые ошибки Telegram (часто возникают при Bad Gateway)
+    if isinstance(error, (NetworkError, TimedOut)):
+        logger.warning(f"⚠️ Сетевая ошибка Telegram API (игнорируем алерт): {error}")
+        return
+        
+    # 2. Проверяем, не пробросился ли httpx.ReadError напрямую
+    error_str = str(error)
+    error_type = str(type(error).__name__)
+    if "ReadError" in error_type or "ReadError" in error_str or "Bad Gateway" in error_str:
+        logger.warning(f"⚠️ Сетевой сбой HTTPX (игнорируем алерт): {error}")
+        return
+    
+    # 3. Логируем и отправляем админам только реальные баги кода
+    logger.error(f"Критическая ошибка в боте: {error}", exc_info=error)
+    
     for admin_id in config.ADMIN_IDS:
         try:
             await context.bot.send_message(
                 chat_id=admin_id,
-                text=f"❌ Критическая ошибка в боте:\n```\n{str(context.error)[:500]}\n```",
+                text=f"❌ Критическая ошибка в боте:\n```\n{str(error)[:500]}\n```",
                 parse_mode='Markdown'
             )
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"Не удалось отправить алерт админу {admin_id}: {e}")
 
-# ============================================
-# ФУНКЦИЯ ЗАПУСКА МОНИТОРИНГА
-# ============================================
 
 async def start_monitoring(application: Application):
     """Запускает мониторинг в фоновом режиме"""
@@ -375,44 +356,55 @@ async def start_monitoring(application: Application):
     logger.info("🔄 Инициализация мониторинга...")
     monitor = BotMonitor(application.bot)
     
-    # Запускаем мониторинг как фоновую задачу
     monitor_task = asyncio.create_task(monitor.start_monitoring())
     logger.info("✅ Мониторинг запущен в фоновом режиме")
 
-# ============================================
-# ГЛАВНАЯ ФУНКЦИЯ (ОБНОВЛЕННАЯ)
-# ============================================
 
 def main():
-    """Запуск бота"""
-    # Инициализируем категории при первом запуске
+    """Запуск бота с улучшенными настройками сети"""
     init_categories()
     
-    # Создаем приложение
-    application = Application.builder().token(BOT_TOKEN).build()
+    # === НАСТРАИВАЕМ HTTPXRequest ДЛЯ ПОВЫШЕНИЯ СТАБИЛЬНОСТИ ===
+    # Это решает проблему внезапных ReadError и обрывов связи
+    httpx_request = HTTPXRequest(
+        connection_pool_size=10,  # Увеличенный пул соединений (по умолчанию 1)
+        connect_timeout=15.0,     # Таймаут подключения
+        read_timeout=15.0,        # Таймаут чтения (важно для long polling)
+        write_timeout=15.0        # Таймаут записи
+    )
     
-    # === РЕГИСТРИРУЕМ ВСЕ ВАШИ СУЩЕСТВУЮЩИЕ ОБРАБОТЧИКИ ===
+    # === RATE LIMITER ДЛЯ ЗАЩИТЫ ОТ СПАМА API ===
+    rate_limiter = AIORateLimiter()
+    
+    # === ПРОКСИ (раскомментируйте при необходимости) ===
+    # PROXY_URL = os.getenv("PROXY_URL", None)
+    
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .request(httpx_request)
+        .rate_limiter(rate_limiter)
+        # .proxy(PROXY_URL)  # Включите, если сервер в регионе с блокировками
+        .build()
+    )
+    
+    # === РЕГИСТРИРУЕМ ОБРАБОТЧИКИ ===
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
-    
-    # Обработчик кнопок
     application.add_handler(CallbackQueryHandler(button_handler))
-    
-    # Обработчик текстовых сообщений
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
-    
-    # === НОВЫЕ ОБРАБОТЧИКИ ДЛЯ МОНИТОРИНГА ===
     application.add_handler(CommandHandler("healthcheck", healthcheck))
     application.add_error_handler(error_handler)
     
-    # === ЗАПУСКАЕМ МОНИТОРИНГ В ФОНОВОМ РЕЖИМЕ ===
-    # Используем asyncio для запуска мониторинга без блокировки основного цикла
+    # === ЗАПУСК МОНИТОРИНГА ===
     loop = asyncio.get_event_loop()
     loop.call_later(2, lambda: asyncio.create_task(start_monitoring(application)))
     
-    # Запускаем бота
     logger.info("🚀 Бот запущен!")
-    application.run_polling()
+    
+    # ВАЖНО: drop_pending_updates=True очистит очередь от старых сообщений
+    application.run_polling(drop_pending_updates=True)
+
 
 if __name__ == "__main__":
     main()

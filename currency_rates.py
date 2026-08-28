@@ -3,31 +3,27 @@ import xml.etree.ElementTree as ET
 import aiohttp
 from datetime import datetime, timedelta
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
 # Кэш курсов
 _last_update = None      
 _rates_cache = None  
-_cbr_date = None  # Дата последнего обновления
+_cbr_date = None
 
 CACHE_DURATION = timedelta(hours=12)
 TARGET_CURRENCIES = ["USD", "EUR", "CNY"]
 
 
 def parse_cbr_xml(xml_text: str):
-    """
-    Парсит XML и извлекает:
-    - rates: {CharCode: Value}
-    - cbr_date: дата в формате datetime (из атрибута Date)
-    """
+    """Парсит XML и извлекает курсы валют"""
     global _cbr_date
     rates = {}
     try:
         root = ET.fromstring(xml_text)
         logger.debug(f"🔍 parse_cbr_xml: XML корень = <{root.tag} ...>")
         
-        # Извлекаем дату из атрибута <ValCurs Date="24.07.2026">
         val_curs_date_str = root.get('Date')
         logger.info(f"📅 parse_cbr_xml: Date атрибут = '{val_curs_date_str}'")
         
@@ -65,22 +61,35 @@ async def fetch_currency_rates():
     url = "https://www.cbr.ru/Scripts/XML_daily.asp"
     logger.info(f"🔄 Загрузка курсов валют с {url}")
     
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            if response.status == 200:
-                xml_text = await response.text()
-                logger.debug(f"📊 XML response (первые 200 символов): {xml_text[:200]}...")
-                
-                rates = parse_cbr_xml(xml_text)
-                if rates:
-                    logger.info(f"📊 ЦБ РФ: получено {len(rates)} валют")
-                    return rates
+    # === ДОБАВЛЯЕМ ТАЙМАУТЫ ДЛЯ ПРЕДОТВРАЩЕНИЯ ЗАВИСАНИЯ ===
+    timeout = aiohttp.ClientTimeout(total=10)
+    
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        try:
+            async with session.get(url) as response:
+                if response.status == 200:
+                    xml_text = await response.text()
+                    logger.debug(f"📊 XML response (первые 200 символов): {xml_text[:200]}...")
+                    
+                    rates = parse_cbr_xml(xml_text)
+                    if rates:
+                        logger.info(f"📊 ЦБ РФ: получено {len(rates)} валют")
+                        return rates
+                    else:
+                        logger.warning("⚠️ ЦБ РФ: не удалось извлечь нужные валюты")
+                        return None
                 else:
-                    logger.warning("⚠️ ЦБ РФ: не удалось извлечь нужные валюты")
+                    logger.error(f"❌ ЦБ РФ: статус {response.status}, текст: {await response.text()}")
                     return None
-            else:
-                logger.error(f"❌ ЦБ РФ: статус {response.status}, текст: {await response.text()}")
-                return None
+        except asyncio.TimeoutError:
+            logger.error("❌ Таймаут при запросе к ЦБ РФ (сайт недоступен)")
+            return None
+        except aiohttp.ClientError as e:
+            logger.error(f"❌ Сетевая ошибка при запросе к ЦБ РФ: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"❌ Неизвестная ошибка при запросе к ЦБ РФ: {e}", exc_info=True)
+            return None
 
 
 async def get_currency_rates() -> dict | None:

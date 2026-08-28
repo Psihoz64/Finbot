@@ -4,12 +4,12 @@ import logging
 from datetime import datetime, timedelta
 from typing import Optional
 from telegram import Bot
-from telegram.error import TelegramError
-import aiosqlite
+from telegram.error import TelegramError, NetworkError, TimedOut
 
 from config import config
 
 logger = logging.getLogger(__name__)
+
 
 class BotMonitor:
     def __init__(self, bot: Bot):
@@ -44,18 +44,15 @@ class BotMonitor:
                 break
             except Exception as e:
                 logger.error(f"Ошибка в цикле мониторинга: {e}")
-                await asyncio.sleep(60)  # Пауза при ошибке
+                await asyncio.sleep(60)
     
     async def _check_bot_health(self):
         """Проверяет доступность бота"""
         try:
-            # Проверяем, жив ли бот (get_me - легкий запрос)
             await self.bot.get_me()
             current_time = datetime.now()
             
-            # Обновляем статус
             if not self.is_healthy:
-                # Бот восстановился
                 self.is_healthy = True
                 self.alert_sent = False
                 await self._notify_admins(
@@ -66,12 +63,11 @@ class BotMonitor:
             
             self.last_ping = current_time
             
-        except TelegramError as e:
-            # Ошибка Telegram API
-            logger.warning(f"Ошибка при проверке бота: {e}")
+        except (TelegramError, NetworkError, TimedOut) as e:
+            # Сетевые ошибки - логируем, но не паникуем
+            logger.warning(f"Сетевая ошибка при проверке бота: {e}")
             await self._handle_health_failure()
         except Exception as e:
-            # Другие ошибки
             logger.error(f"Критическая ошибка в мониторинге: {e}")
             await self._handle_health_failure()
     
@@ -79,14 +75,12 @@ class BotMonitor:
         """Обрабатывает сбой бота"""
         self.is_healthy = False
         
-        # Проверяем, прошло ли достаточно времени для отправки алерта
         if self.last_ping and not self.alert_sent:
             time_since_last_ping = (datetime.now() - self.last_ping).total_seconds()
             if time_since_last_ping > config.ALERT_TIMEOUT:
                 await self._send_alert()
                 self.alert_sent = True
         elif not self.last_ping:
-            # Первая проверка уже с ошибкой
             await self._send_alert()
             self.alert_sent = True
     
@@ -132,5 +126,6 @@ class BotMonitor:
             self.is_healthy = True
             self.alert_sent = False
             return True
-        except:
+        except Exception as e:
+            logger.warning(f"Ping не удался: {e}")
             return False
