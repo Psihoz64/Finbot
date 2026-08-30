@@ -116,56 +116,68 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     expense_category = context.user_data.get('expense_category')
     
     # --- ОБРАБОТКА ВВОДА ДЛЯ ДОХОДОВ И РАСХОДОВ ---
-    if income_category or expense_category:
-        try:
-            amount = float(text.strip())
-            if amount <= 0:
+        if income_category or expense_category:
+        import re
+        
+        # Сначала пытаемся извлечь число и описание через regex
+        match = re.match(r'([\d.]+)\s*(.*)', text.strip())
+        
+        if match:
+            # Успешно нашли число и (возможно) описание
+            amount_str = match.group(1)
+            description = match.group(2).strip()
+            
+            try:
+                amount = float(amount_str)
+                if amount <= 0:
+                    await update.message.reply_text(
+                        "❌ Сумма должна быть больше 0. Попробуйте снова.",
+                        reply_markup=main_menu_keyboard()
+                    )
+                    return
+            except ValueError:
                 await update.message.reply_text(
-                    "❌ Сумма должна быть больше 0. Попробуйте снова.",
+                    "❌ Некорректный формат суммы. Введите число.\n"
+                    "Пример: 100 или 5000.50",
                     reply_markup=main_menu_keyboard()
                 )
                 return
-
-            if income_category:
-                tr_type = 'income'
-                category_name = income_category
-            else:
-                tr_type = 'expense'
-                category_name = expense_category
-
-            import re
-            match = re.match(r'([\d.]+)\s+(.*)', text)
-            if match:
-                description = match.group(2).strip()
-            else:
-                description = ""
-
-            add_transaction(user_id, tr_type, category_name, amount, description)
-            
-            balance_data = get_total_balance(user_id)
-            
-            if income_category:
-                await update.message.reply_text(
-                    f"✅ Доход {amount:.2f} руб. добавлен!\n"
-                    f"💰 Баланс: {balance_data['current_balance']:.2f} руб.",
-                    reply_markup=main_menu_keyboard()
-                )
-            else:
-                await update.message.reply_text(
-                    f"✅ Расход {amount:.2f} руб. добавлен!\n"
-                    f"💰 Баланс: {balance_data['current_balance']:.2f} руб.",
-                    reply_markup=main_menu_keyboard()
-                )
-            
-            context.user_data.pop('income_category', None)
-            context.user_data.pop('expense_category', None)
-
-        except ValueError:
+        else:
+            # Regex не сработал - показываем ошибку
             await update.message.reply_text(
                 "❌ Некорректный формат. Введите сумму (число) и описание через пробел.\n"
-                "Пример: 5000 Зарплата",
+                "Пример: 5000 Зарплата\n"
+                "Или просто число: 100",
                 reply_markup=main_menu_keyboard()
             )
+            return
+
+        if income_category:
+            tr_type = 'income'
+            category_name = income_category
+        else:
+            tr_type = 'expense'
+            category_name = expense_category
+
+        add_transaction(user_id, tr_type, category_name, amount, description)
+        
+        balance_data = get_total_balance(user_id)
+        
+        if income_category:
+            await update.message.reply_text(
+                f"✅ Доход {amount:.2f} руб. добавлен!\n"
+                f"💰 Баланс: {balance_data['current_balance']:.2f} руб.",
+                reply_markup=main_menu_keyboard()
+            )
+        else:
+            await update.message.reply_text(
+                f"✅ Расход {amount:.2f} руб. добавлен!\n"
+                f"💰 Баланс: {balance_data['current_balance']:.2f} руб.",
+                reply_markup=main_menu_keyboard()
+            )
+        
+        context.user_data.pop('income_category', None)
+        context.user_data.pop('expense_category', None)
         return
 
     # --- ОБРАБОТКА НАКОПЛЕНИЙ ---
