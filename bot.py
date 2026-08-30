@@ -397,7 +397,7 @@ def main():
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-        try:
+    try:
         # Отправляем результаты админам
         can_start = loop.run_until_complete(
             run_startup_checks(send_to_telegram=True)
