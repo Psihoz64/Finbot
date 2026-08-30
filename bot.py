@@ -116,7 +116,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     expense_category = context.user_data.get('expense_category')
     
     # --- ОБРАБОТКА ВВОДА ДЛЯ ДОХОДОВ И РАСХОДОВ ---
-        if income_category or expense_category:
+    if income_category or expense_category:
         import re
         
         # Сначала пытаемся извлечь число и описание через regex
