@@ -396,19 +396,18 @@ def main():
     # Запускаем асинхронные тесты
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    
-    try:
-        can_start = loop.run_until_complete(run_startup_checks())
-    except KeyboardInterrupt:
-        print("\n⚠️ Тестирование прервано пользователем")
-        can_start = False
+
+        try:
+        # Отправляем результаты админам
+        can_start = loop.run_until_complete(
+            run_startup_checks(send_to_telegram=True)
+        )
     except Exception as e:
-        print(f"\n❌ Критическая ошибка при тестировании: {e}")
+        print(f"❌ Критическая ошибка при тестировании: {e}")
         can_start = False
     
     if not can_start:
-        print("\n🚫 Запуск бота отменён из-за критических ошибок.")
-        print("Исправьте ошибки и попробуйте снова.")
+        print("🚫 Запуск бота отменён.")
         sys.exit(1)
     
     # === ШАГ 3: Настройка и запуск бота ===

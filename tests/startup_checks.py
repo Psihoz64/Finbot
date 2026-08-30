@@ -161,4 +161,72 @@ async def run_startup_checks() -> bool:
     # Выводим сводку
     can_start = checker.print_summary()
     
+    if send_to_telegram:
+        try:
+            from config import BOT_TOKEN
+            await send_test_results_to_admins(checker, BOT_TOKEN)
+        except Exception as e:
+            logger.warning(f"Не удалось отправить результаты в Телеграм: {e}")
+    
     return can_start and checker.all_critical_passed()
+
+# tests/startup_checks.py
+
+# Добавьте в конец файла:
+
+async def send_test_results_to_admins(checker: StartupChecker, bot_token: str):
+    """Отправляет результаты тестов администраторам в Телеграм"""
+    try:
+        from telegram import Bot
+        from config import config
+        
+        if not config.ADMIN_IDS:
+            return
+        
+        bot = Bot(token=bot_token)
+        
+        # Формируем сообщение
+        total = len(checker.results)
+        passed = sum(1 for r in checker.results if r.passed)
+        failed = total - passed
+        
+        if failed == 0:
+            status = "🎉 Все проверки пройдены!"
+            emoji = "✅"
+        elif any(not r.passed and r.critical for r in checker.results):
+            status = "🚨 КРИТИЧЕСКИЕ ОШИБКИ!"
+            emoji = "❌"
+        else:
+            status = "⚠️ Есть предупреждения"
+            emoji = "⚠️"
+        
+        message = f"{emoji} *Результаты самотестирования бота*\n\n"
+        message += f"Всего тестов: {total}\n"
+        message += f"Пройдено: {passed}\n"
+        message += f"Провалено: {failed}\n\n"
+        
+        # Детали ошибок
+        failed_tests = [r for r in checker.results if not r.passed]
+        if failed_tests:
+            message += "*Ошибки:*\n"
+            for result in failed_tests:
+                critical_mark = " 🔴" if result.critical else ""
+                message += f"• {result.name}{critical_mark}\n"
+                if result.message:
+                    message += f"  {result.message}\n"
+        
+        message += f"\n🕐 Время проверки: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
+        
+        # Отправляем всем админам
+        for admin_id in config.ADMIN_IDS:
+            try:
+                await bot.send_message(
+                    chat_id=admin_id,
+                    text=message,
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                logger.error(f"Не удалось отправить результаты админу {admin_id}: {e}")
+    
+    except Exception as e:
+        logger.error(f"Ошибка отправки результатов тестов: {e}")
