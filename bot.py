@@ -31,6 +31,8 @@ from report_generator import generate_analytics_report, generate_monthly_report
 from monitor import BotMonitor
 from config import config
 
+from tests.startup_checks import run_startup_checks
+
 # Логирование
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -67,6 +69,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]]),
         parse_mode='Markdown'
     )
+    pass
     
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -104,6 +107,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Неизвестная команда. Используйте кнопки меню.",
             reply_markup=main_menu_keyboard()
         )
+        pass
 
 
 async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -266,6 +270,7 @@ async def handle_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=main_menu_keyboard()
             )
         return
+    pass
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -286,6 +291,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown',
         reply_markup=main_menu_keyboard()
     )
+    pass
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -295,6 +301,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✅ Действие отменено.",
         reply_markup=main_menu_keyboard()
     )
+    pass
 
 
 async def healthcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -329,6 +336,7 @@ async def healthcheck(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Таймаут тревоги: {config.ALERT_TIMEOUT}с",
         parse_mode='Markdown'
     )
+    pass
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -359,6 +367,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception as e:
             logger.error(f"Не удалось отправить алерт админу {admin_id}: {e}")
+            pass
 
 
 async def start_monitoring(application: Application):
@@ -370,14 +379,41 @@ async def start_monitoring(application: Application):
     
     monitor_task = asyncio.create_task(monitor.start_monitoring())
     logger.info("✅ Мониторинг запущен в фоновом режиме")
+    pass
 
 
 def main():
     """Запуск бота с улучшенными настройками сети"""
     init_categories()
+     # === ШАГ 1: Инициализация БД ===
+    print("🔧 Инициализация базы данных...")
+    init_db()
+    init_categories()
     
-    # === НАСТРАИВАЕМ HTTPXRequest ДЛЯ ПОВЫШЕНИЯ СТАБИЛЬНОСТИ ===
-    # Это решает проблему внезапных ReadError и обрывов связи
+    # === ШАГ 2: Запуск самотестирования ===
+    print("\n🧪 Запуск самотестирования...")
+    
+    # Запускаем асинхронные тесты
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        can_start = loop.run_until_complete(run_startup_checks())
+    except KeyboardInterrupt:
+        print("\n⚠️ Тестирование прервано пользователем")
+        can_start = False
+    except Exception as e:
+        print(f"\n❌ Критическая ошибка при тестировании: {e}")
+        can_start = False
+    
+    if not can_start:
+        print("\n🚫 Запуск бота отменён из-за критических ошибок.")
+        print("Исправьте ошибки и попробуйте снова.")
+        sys.exit(1)
+    
+    # === ШАГ 3: Настройка и запуск бота ===
+    print("\n🚀 Запуск бота...")
+    
     httpx_request = HTTPXRequest(
         connection_pool_size=10,  # Увеличенный пул соединений (по умолчанию 1)
         connect_timeout=15.0,     # Таймаут подключения
@@ -387,9 +423,6 @@ def main():
     
     # === RATE LIMITER ДЛЯ ЗАЩИТЫ ОТ СПАМА API ===
     rate_limiter = AIORateLimiter()
-    
-    # === ПРОКСИ (раскомментируйте при необходимости) ===
-    # PROXY_URL = os.getenv("PROXY_URL", None)
     
     application = (
         Application.builder()
@@ -419,4 +452,5 @@ def main():
 
 
 if __name__ == "__main__":
+    import sys
     main()

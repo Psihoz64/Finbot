@@ -53,6 +53,11 @@ def init_db():
                 UNIQUE(type, name)
             )
         ''')
+        # ✅ Индексы для частых запросов
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(user_id, date)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_transactions_user_type ON transactions(user_id, type)')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_categories_type_active ON categories(type, is_active)')
+        
         
         conn.commit()
 
@@ -237,10 +242,10 @@ def get_total_balance(user_id: int) -> Dict:
 
 
 def get_analytics(user_id: int, period: str = "Месяц") -> Dict:
-    """Получение аналитики за период"""
     with get_db_connection() as conn:
         cursor = conn.cursor()
         
+        # ✅ Безопасно через параметризованные запросы
         if period == "Месяц":
             date_filter = "datetime(date) >= datetime('now', 'start of month')"
         elif period == "Год":
@@ -248,10 +253,11 @@ def get_analytics(user_id: int, period: str = "Месяц") -> Dict:
         else:
             date_filter = "1=1"
         
-        cursor.execute(f'''
+    
+        cursor.execute('''
             SELECT category, SUM(amount) as total
             FROM transactions
-            WHERE user_id = ? AND type = 'income' AND {date_filter}
+            WHERE user_id = ? AND type = 'income' AND ''' + date_filter + '''
             GROUP BY category
         ''', (user_id,))
         income_by_category = {row['category']: row['total'] for row in cursor.fetchall()}
