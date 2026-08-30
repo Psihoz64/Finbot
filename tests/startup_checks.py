@@ -10,7 +10,6 @@ import sys
 from datetime import datetime
 from typing import List, Tuple, Optional
 
-# Настройка логирования для тестов
 logger = logging.getLogger("startup_checks")
 
 
@@ -22,7 +21,7 @@ class TestResult:
         self.passed = passed
         self.message = message
         self.duration = duration
-        self.critical = critical  # Критичный тест блокирует запуск
+        self.critical = critical
     
     def __str__(self):
         status = "✅" if self.passed else "❌"
@@ -35,17 +34,14 @@ class StartupChecker:
     
     def __init__(self):
         self.results: List[TestResult] = []
-        self.start_time = None
     
     def add_result(self, name: str, passed: bool, message: str = "", 
                    duration: float = 0.0, critical: bool = True):
-        """Добавляет результат теста"""
         result = TestResult(name, passed, message, duration, critical)
         self.results.append(result)
         logger.info(str(result))
     
     def run_sync_test(self, name: str, test_func, critical: bool = True):
-        """Запускает синхронный тест"""
         start = datetime.now()
         try:
             passed, message = test_func()
@@ -58,7 +54,6 @@ class StartupChecker:
             return False
     
     async def run_async_test(self, name: str, test_func, critical: bool = True):
-        """Запускает асинхронный тест"""
         start = datetime.now()
         try:
             passed, message = await test_func()
@@ -71,7 +66,6 @@ class StartupChecker:
             return False
     
     def print_summary(self):
-        """Выводит сводку результатов"""
         total = len(self.results)
         passed = sum(1 for r in self.results if r.passed)
         failed = total - passed
@@ -93,86 +87,17 @@ class StartupChecker:
         
         if critical_failed > 0:
             print(f"\n🚨 КРИТИЧЕСКИХ ОШИБОК: {critical_failed}")
-            print("❌ Запуск бота невозможен без исправления критических ошибок!")
             return False
         elif failed > 0:
-            print(f"\n⚠️ Неправильных тестов: {failed}")
-            print("⚠️ Бот будет запущен, но некоторые функции могут не работать.")
+            print(f"\n⚠️ Предупреждений: {failed}")
             return True
         else:
             print("\n🎉 Все проверки пройдены успешно!")
             return True
     
     def all_critical_passed(self) -> bool:
-        """Проверяет, прошли ли все критические тесты"""
         return all(r.passed for r in self.results if r.critical)
 
-
-async def run_startup_checks() -> bool:
-    """
-    Запускает все проверки при старте.
-    Возвращает True, если можно запускать бота.
-    """
-    checker = StartupChecker()
-    
-    print("\n🔍 Запуск самотестирования...")
-    print("="*60)
-    
-    # === КРИТИЧЕСКИЕ ТЕСТЫ (блокируют запуск) ===
-    
-    # 1. Проверка конфигурации
-    from tests.test_config import check_config
-    checker.run_sync_test("Конфигурация", check_config, critical=True)
-    
-    # 2. Проверка базы данных
-    from tests.test_database import check_database_structure
-    checker.run_sync_test("Структура БД", check_database_structure, critical=True)
-    
-    # 3. Проверка категорий
-    from tests.test_database import check_categories
-    checker.run_sync_test("Категории", check_categories, critical=True)
-    
-    # 4. Проверка CRUD операций
-    from tests.test_database import check_crud_operations
-    checker.run_sync_test("CRUD операции", check_crud_operations, critical=True)
-    
-    # 5. Проверка баланса
-    from tests.test_logic import check_balance_calculation
-    checker.run_sync_test("Расчёт баланса", check_balance_calculation, critical=True)
-    
-    # === НЕКРИТИЧЕСКИЕ ТЕСТЫ (не блокируют запуск) ===
-    
-    # 6. Проверка Telegram API
-    from tests.test_config import check_telegram_api
-    await checker.run_async_test("Telegram API", check_telegram_api, critical=False)
-    
-    # 7. Проверка курсов валют
-    from tests.test_logic import check_currency_rates
-    await checker.run_async_test("Курсы валют", check_currency_rates, critical=False)
-    
-    # 8. Проверка обработчиков
-    from tests.test_logic import check_handlers_registered
-    checker.run_sync_test("Обработчики", check_handlers_registered, critical=False)
-    
-    # 9. Проверка клавиатур
-    from tests.test_logic import check_keyboards
-    checker.run_sync_test("Клавиатуры", check_keyboards, critical=False)
-    
-    # Выводим сводку
-    can_start = checker.print_summary()
-    
-    if send_to_telegram:
-        try:
-            from config import BOT_TOKEN
-            await send_test_results_to_admins(checker, BOT_TOKEN)
-        except Exception as e:
-            logger.warning(f"Не удалось отправить результаты в Телеграм: {e}")
-    
-    return can_start and checker.all_critical_passed()
-
-# tests/startup_checks.py
-
-# Добавьте в конец файла:
 
 async def send_test_results_to_admins(checker: StartupChecker, bot_token: str):
     """Отправляет результаты тестов администраторам в Телеграм"""
@@ -185,7 +110,6 @@ async def send_test_results_to_admins(checker: StartupChecker, bot_token: str):
         
         bot = Bot(token=bot_token)
         
-        # Формируем сообщение
         total = len(checker.results)
         passed = sum(1 for r in checker.results if r.passed)
         failed = total - passed
@@ -205,7 +129,6 @@ async def send_test_results_to_admins(checker: StartupChecker, bot_token: str):
         message += f"Пройдено: {passed}\n"
         message += f"Провалено: {failed}\n\n"
         
-        # Детали ошибок
         failed_tests = [r for r in checker.results if not r.passed]
         if failed_tests:
             message += "*Ошибки:*\n"
@@ -217,7 +140,6 @@ async def send_test_results_to_admins(checker: StartupChecker, bot_token: str):
         
         message += f"\n🕐 Время проверки: {datetime.now().strftime('%d.%m.%Y %H:%M:%S')}"
         
-        # Отправляем всем админам
         for admin_id in config.ADMIN_IDS:
             try:
                 await bot.send_message(
@@ -230,3 +152,56 @@ async def send_test_results_to_admins(checker: StartupChecker, bot_token: str):
     
     except Exception as e:
         logger.error(f"Ошибка отправки результатов тестов: {e}")
+
+
+async def run_startup_checks(send_to_telegram: bool = True) -> bool:
+    """
+    Запускает все проверки при старте.
+    Возвращает True, если можно запускать бота.
+    """
+    checker = StartupChecker()
+    
+    print("\n🔍 Запуск самотестирования...")
+    print("="*60)
+    
+    # === КРИТИЧЕСКИЕ ТЕСТЫ ===
+    from tests.test_config import check_config
+    checker.run_sync_test("Конфигурация", check_config, critical=True)
+    
+    from tests.test_database import check_database_structure
+    checker.run_sync_test("Структура БД", check_database_structure, critical=True)
+    
+    from tests.test_database import check_categories
+    checker.run_sync_test("Категории", check_categories, critical=True)
+    
+    from tests.test_database import check_crud_operations
+    checker.run_sync_test("CRUD операции", check_crud_operations, critical=True)
+    
+    from tests.test_logic import check_balance_calculation
+    checker.run_sync_test("Расчёт баланса", check_balance_calculation, critical=True)
+    
+    # === НЕКРИТИЧЕСКИЕ ТЕСТЫ ===
+    from tests.test_config import check_telegram_api
+    await checker.run_async_test("Telegram API", check_telegram_api, critical=False)
+    
+    from tests.test_logic import check_currency_rates
+    await checker.run_async_test("Курсы валют", check_currency_rates, critical=False)
+    
+    from tests.test_logic import check_handlers_registered
+    checker.run_sync_test("Обработчики", check_handlers_registered, critical=False)
+    
+    from tests.test_logic import check_keyboards
+    checker.run_sync_test("Клавиатуры", check_keyboards, critical=False)
+    
+    # Выводим сводку
+    can_start = checker.print_summary()
+    
+    # Отправляем результаты в Телеграм (если включено)
+    if send_to_telegram:
+        try:
+            from config import BOT_TOKEN
+            await send_test_results_to_admins(checker, BOT_TOKEN)
+        except Exception as e:
+            logger.warning(f"Не удалось отправить результаты в Телеграм: {e}")
+    
+    return can_start and checker.all_critical_passed()
