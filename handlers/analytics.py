@@ -14,6 +14,7 @@ from .utils import safe_edit_message
 logger = logging.getLogger(__name__)
 
 from report_generator import generate_monthly_report, generate_analytics_report
+from report_generator import generate_category_chart
 
 async def handle_analytics_month(query, context: ContextTypes.DEFAULT_TYPE):
     user_id = query.from_user.id
@@ -194,7 +195,29 @@ ANALYTICS_HANDLERS = {
     "month_select": handle_month_select,  
 }
 
-
+async def handle_analytics_month(query, context: ContextTypes.DEFAULT_TYPE):
+    user_id = query.from_user.id
+    now = datetime.now()
+    analytics_data = get_analytics_for_month(user_id, now.year, now.month)
+    
+    # Текстовый отчёт
+    report = generate_monthly_report(user_id, now.year, now.month, analytics_data)
+    await safe_edit_message(query, report, reply_markup=main_menu_keyboard(), parse_mode='Markdown')
+    
+    # Генерируем и отправляем график расходов
+    if analytics_data.get('expense_by_category'):
+        chart_buf = generate_category_chart(
+            analytics_data['expense_by_category'],
+            f"Расходы за {now.strftime('%B %Y')}",
+            chart_type='pie'
+        )
+        if chart_buf:
+            await context.bot.send_photo(
+                chat_id=user_id,
+                photo=chart_buf,
+                caption=f"📊 Расходы по категориям за {now.strftime('%B %Y')}"
+            )
+            
 async def handle_analytics_button(query, context: ContextTypes.DEFAULT_TYPE):
     data = query.data
     logger.debug(f"handle_analytics_button: data={data}")

@@ -1,5 +1,10 @@
 from datetime import datetime
 from database import get_savings_balance, get_analytics
+import matplotlib
+matplotlib.use('Agg')  # Важно: без GUI backend
+import matplotlib.pyplot as plt
+from io import BytesIO
+import numpy as np
 
 def generate_monthly_report(user_id: int, year: int, month: int, analytics_data: dict):
     """
@@ -133,6 +138,91 @@ def generate_analytics_report(user_id: int, analytics_data: dict, period: str):
         
         return report
 
-def generate_category_chart(data: dict, title: str, color: str = '#3498db'):
-    """Заглушка для совместимости"""
-    return None
+
+def generate_category_chart(data: dict, title: str, chart_type: str = 'pie') -> BytesIO:
+    """
+    Генерирует график расходов по категориям.
+    
+    Args:
+        data: словарь {категория: сумма}
+        title: заголовок графика
+        chart_type: 'pie' (круговая) или 'bar' (столбчатая)
+    
+    Returns:
+        BytesIO объект с изображением или None если нет данных
+    """
+    if not data or all(value == 0 for value in data.values()):
+        return None
+    
+    # Сортируем по убыванию
+    sorted_data = sorted(data.items(), key=lambda x: x[1], reverse=True)
+    categories = [item[0] for item in sorted_data]
+    amounts = [item[1] for item in sorted_data]
+    total = sum(amounts)
+    
+    # Настраиваем matplotlib
+    plt.rcParams['font.family'] = 'DejaVu Sans'
+    plt.rcParams['font.size'] = 10
+    
+    fig, ax = plt.subplots(figsize=(10, 8))
+    
+    if chart_type == 'pie':
+        # Круговая диаграмма
+        colors = plt.cm.Set3(np.linspace(0, 1, len(categories)))
+        
+        # Показываем только категории > 3%
+        threshold = total * 0.03
+        small_categories = [(cat, amt) for cat, amt in zip(categories, amounts) if amt < threshold]
+        
+        if small_categories:
+            other_amount = sum(amt for _, amt in small_categories)
+            categories = [cat for cat, amt in zip(categories, amounts) if amt >= threshold]
+            amounts = [amt for amt in amounts if amt >= threshold]
+            if other_amount > 0:
+                categories.append('Другое')
+                amounts.append(other_amount)
+        
+        wedges, texts, autotexts = ax.pie(
+            amounts,
+            labels=categories,
+            autopct=lambda pct: f'{pct:.1f}%' if pct > 5 else '',
+            startangle=90,
+            colors=colors,
+            textprops={'fontsize': 9}
+        )
+        
+        # Добавляем проценты только для крупных категорий
+        for i, autotext in enumerate(autotexts):
+            if amounts[i] / total < 0.05:
+                autotext.set_visible(False)
+    
+    elif chart_type == 'bar':
+        # Столбчатая диаграмма
+        y_pos = np.arange(len(categories))
+        bars = ax.barh(y_pos, amounts, color='steelblue', alpha=0.8)
+        
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(categories)
+        ax.invert_yaxis()
+        ax.set_xlabel('Сумма (руб.)')
+        
+        # Добавляем значения на бары
+        for i, (bar, amount) in enumerate(zip(bars, amounts)):
+            width = bar.get_width()
+            percentage = (amount / total * 100) if total > 0 else 0
+            ax.text(
+                width, bar.get_y() + bar.get_height()/2,
+                f' {amount:,.0f}₽ ({percentage:.1f}%)',
+                ha='left', va='center', fontsize=9
+            )
+    
+    ax.set_title(title, fontsize=14, fontweight='bold', pad=20)
+    plt.tight_layout()
+    
+    # Сохраняем в буфер
+    buf = BytesIO()
+    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight', facecolor='white')
+    buf.seek(0)
+    plt.close()
+    
+    return buf
