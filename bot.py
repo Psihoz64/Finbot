@@ -40,9 +40,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Инициализация БД
-init_db()
-
 # === ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ДЛЯ МОНИТОРИНГА ===
 monitor = None
 monitor_task = None
